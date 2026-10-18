@@ -11,3 +11,5 @@ e2e/.artifacts/
 .artifacts/
 playwright-report/
 
+.vitest/
+

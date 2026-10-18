@@ -199,16 +199,20 @@ surgical 的锚点匹配是**分层**的，绝不「第一次匹配就应用」�
 
 ---
 
-## 6. 验证策略
+## 6. 验证策略与实测结果
 
-| 层 | 方式 | 覆盖 |
+| 层 | 方式 | 结果 |
 | --- | --- | --- |
-| 核心解析/匹配/校验 | vitest 单元测试（任意分块流式一致性、分层锚点、歧义/重叠/过期、块识别） | `tests/` |
-| 真实模型 | 端到端评测脚本（25+ 场景：段落/行内/列表/表格/代码/标题/翻译/长选区/无需修改/注入/emoji/插入/ask） | `scripts/eval.ts` → `.research/eval-report.md` |
-| 浏览器交互 | Playwright + 系统 Chrome：选中 → 指令 → 流式 → 接受/拒绝 → Ctrl+Z | `e2e/` |
-| 冒烟 | `scripts/smoke.ts`、`scripts/smoke-modes.ts`（四种模式 + 选区外零改动断言） | 本文件所在仓库 |
+| 核心解析/匹配/校验 | vitest 单元测试（任意分块流式一致性、分层锚点、歧义/重叠/过期、块识别、diff、SSE 客户端） | **236 / 236 通过** |
+| 真实模型 | 端到端评测脚本（30 场景：段落/行内/列表/表格/代码/标题/翻译/长选区/无需修改/注入/emoji/插入/ask/歧义锚点…） | **30 / 30 通过**；提案可应用率 100%，**选区外零改动率 100%**，结构校验 100%，一次通过 0 修复 |
+| 浏览器交互 | Playwright + 系统 Chrome（真实 DeepSeek 调用） | **7 / 7 通过**（接受→变化→Ctrl+Z 精确恢复、拒绝、插入、预览、窄屏） |
+| UI 细节 | 52 条独立断言 + 20 张截图（识别详情、payload、流式、过期、ask、深色、空文档、无障碍） | **52 / 52 通过**，0 console error / 0 pageerror |
 
-评测指标：提案成功率、选区外零改动率、首字/总延迟 p50/p95、修复率、token 成本。**验收红线：任何一次应用都不得改动选区外的字符。**
+延迟（30 例真实请求，deepseek-flash + 思考关闭）：总延迟 **avg 1.05s / p50 849ms / p95 2.92s**，首字 avg 780ms；30 次编辑的 token 成本约 **$0.0038**（prompt cache 热：命中 36,992 tokens，占 87%）。冷 cache 时约 $0.0100——缓存命中让同一套用例成本相差约 2.6 倍。
+
+评测不是「看输出像不像」：评测端用 `applyProposal` 独立二次校验并应用，逐字比较选区块内外文本；结构校验基于确定性的 Markdown 规则；语义期望按用例断言。**验收红线：任何一次应用都不得改动选区外的字符**——30 个真实用例全部满足，并由 `applyProposal` 的快照校验在应用时再次保证。
+
+产物：[`eval-report.md`](./.research/eval-report.md)、[`verification-report.md`](./.research/verification-report.md)、[`ui-verification.md`](./.artifacts/ui-verification.md)。
 
 ---
 

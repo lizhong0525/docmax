@@ -626,7 +626,6 @@ export function buildProposal(input: BuildProposalInput): BuildProposalResult {
     if (!parsed.content.trim()) {
       newText = range.text;
       strategy = 'unchanged';
-      warnings.push({ code: 'no-change', severity: 'info', message: '模型未返回任何修改（无需改动）' });
     } else {
       const sanitized = sanitizeReplacement(parsed.content, range.text, local, sanitize);
       newText = sanitized.text;

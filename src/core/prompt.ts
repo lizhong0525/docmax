@@ -161,7 +161,12 @@ export function buildUserPrompt(
   }
 
   parts.push(section('before', range.before || '（无）'));
-  parts.push(section('selection', range.text || '（空选区：光标处插入模式）'));
+  parts.push(
+    section(
+      'selection',
+      range.text || (opts.mode === 'insert' ? '（空选区：光标处插入模式，请在光标处插入内容）' : '（空选区：用户未选中文字）'),
+    ),
+  );
   parts.push(section('after', range.after || '（无）'));
   parts.push(section('instruction', request.instruction));
   parts.push(

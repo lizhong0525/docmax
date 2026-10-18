@@ -95,11 +95,14 @@ function lineBlockKind(doc: string, lineStart: number, lineEnd: number, fence: F
   const raw = doc.slice(lineStart, lineEnd);
   const t = raw.trim();
   if (!t) return 'empty';
+  if (/^(`{3,}|~{3,})/.test(t)) return 'code';
   if (/^#{1,6}(\s|$)/.test(t)) return 'heading';
   if (/^([-*+]|\d{1,9}[.)])(\s|$)/.test(t)) return 'list';
   if (/^>/.test(t)) return 'blockquote';
   if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) return 'hr';
   if (/^<[a-zA-Z!/?]/.test(t)) return 'html';
+  // 表格分隔行本身（| --- | --- |）也要识别为表格
+  if (t.includes('|') && /^\|?[\s:|-]+\|?$/.test(t) && /-{3,}/.test(t)) return 'table';
   if (isTableLine(doc, lineStart, lineEnd)) return 'table';
   return 'paragraph';
 }
@@ -107,12 +110,42 @@ function lineBlockKind(doc: string, lineStart: number, lineEnd: number, fence: F
 function isTableLine(doc: string, lineStart: number, lineEnd: number): boolean {
   const line = doc.slice(lineStart, lineEnd).trim();
   if (!line.includes('|')) return false;
+  // 向下看一行：数据行紧跟分隔行
   const nextStart = lineEnd + 1;
-  if (nextStart >= doc.length) return false;
-  let nextEnd = doc.indexOf('\n', nextStart);
-  if (nextEnd < 0) nextEnd = doc.length;
-  const next = doc.slice(nextStart, nextEnd).trim();
-  return /^\|?[\s:|-]+\|?$/.test(next) && next.includes('-');
+  if (nextStart < doc.length) {
+    let nextEnd = doc.indexOf('\n', nextStart);
+    if (nextEnd < 0) nextEnd = doc.length;
+    const next = doc.slice(nextStart, nextEnd).trim();
+    if (/^\|?[\s:|-]+\|?$/.test(next) && next.includes('-')) return true;
+  }
+  // 向上找表格块起点：同一表格块内任意一行是分隔行即判定为表格
+  let start = lineStart;
+  for (let i = 0; i < 50 && start > 0; i++) {
+    const prevEnd = start - 1;
+    const prevStart = doc.lastIndexOf('\n', prevEnd - 1) + 1;
+    const prev = doc.slice(prevStart, prevEnd).trim();
+    if (!prev || !prev.includes('|')) break;
+    if (/^\|?[\s:|-]+\|?$/.test(prev) && prev.includes('-')) return true;
+    start = prevStart;
+  }
+  return false;
+}
+
+/** Markdown frontmatter 区间（文档以 --- 开头且存在闭合行） */
+function frontmatterRange(doc: string): { start: number; end: number } | null {
+  if (!doc.startsWith('---')) return null;
+  const firstLineEnd = doc.indexOf('\n');
+  if (firstLineEnd < 0) return null;
+  if (doc.slice(0, firstLineEnd).trim() !== '---') return null;
+  let pos = firstLineEnd + 1;
+  for (let i = 0; i < 200 && pos < doc.length; i++) {
+    const end = doc.indexOf('\n', pos);
+    const lineEnd = end < 0 ? doc.length : end;
+    const line = doc.slice(pos, lineEnd).trim();
+    if (line === '---' || line === '...') return { start: 0, end: lineEnd };
+    pos = lineEnd + 1;
+  }
+  return null;
 }
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -173,6 +206,12 @@ export function analyzeSelection(doc: string, from: number, to: number, index = 
     blockKind = startKind === endKind ? startKind : startKind === 'empty' ? endKind : startKind;
   }
 
+  // frontmatter 覆盖：文档头部 --- 区间内一律视为 frontmatter
+  const frontmatter = frontmatterRange(doc);
+  if (frontmatter && safeFrom >= frontmatter.start && safeTo <= frontmatter.end) {
+    blockKind = 'frontmatter';
+  }
+
   // 是否跨多个块：扫描选区覆盖的行，块类型出现两种以上
   const touchedKinds = new Set<BlockKind>();
   if (chars > 0) {
@@ -187,7 +226,7 @@ export function analyzeSelection(doc: string, from: number, to: number, index = 
       lineStart = lineEnd + 1;
     }
   }
-  const spansMultipleBlocks = touchedKinds.size > 1;
+  const spansMultipleBlocks = blockKind === 'frontmatter' ? false : touchedKinds.size > 1;
 
   // 边界字/词判断
   const beforeChar = safeFrom > 0 ? doc[safeFrom - 1] : '';
@@ -221,7 +260,7 @@ export function analyzeSelection(doc: string, from: number, to: number, index = 
   if (spansMultipleBlocks) suggestions.push('选区跨多个 Markdown 块，模型会保持各块结构');
   if (blockKind === 'code') suggestions.push('选区位于代码块内，模型只修改代码内容');
   if (startsMidLine && endsMidLine && chars > 0 && chars < 60) suggestions.push('选区是行内片段，模型会输出自然衔接的替换片段');
-  if (startLine !== endLine && chars > 3000) suggestions.push('选区较长，可考虑“局部精准修改”模式以降低延迟');
+  if (chars > 3000) suggestions.push('选区较长，可考虑“局部精准修改”模式以降低延迟');
 
   return {
     index,

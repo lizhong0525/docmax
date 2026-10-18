@@ -372,8 +372,10 @@ export async function handleEdit(req: Request, res: Response): Promise<void> {
   };
   res.on('close', onClose);
 
+  let terminalSent = false;
   const send = (event: ServerEvent) => {
     if (closed || res.writableEnded) return;
+    if (event.type === 'proposal' || event.type === 'error' || event.type === 'done') terminalSent = true;
     try {
       res.write(encodeSse(event));
     } catch {
@@ -394,6 +396,20 @@ export async function handleEdit(req: Request, res: Response): Promise<void> {
   const stats: EditRunStats = { attempts: 0, repairs: 0, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, truncatedLastAttempt: false };
   try {
     await executeEdit(request, send, signal, stats);
+    if (!terminalSent && !closed && timeoutSignal.aborted) {
+      send({
+        type: 'error',
+        code: 'timeout',
+        message: `本次生成超时（${Math.round(config.requestTimeoutMs / 1000)} 秒）。请重试，或缩小选区/换用更快的模型。`,
+        retryable: true,
+      });
+      send({
+        type: 'done',
+        requestId: request.requestId,
+        usage: stats.usage,
+        timings: { startedAt: logStart, attempts: stats.attempts, repairs: stats.repairs },
+      });
+    }
   } catch (err) {
     if (!signal.aborted) {
       const deepseekError = err instanceof DeepSeekError ? err : null;

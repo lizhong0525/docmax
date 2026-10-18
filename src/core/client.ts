@@ -54,17 +54,26 @@ export async function streamEdit(
   if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
     let message = `请求失败（HTTP ${response.status}）`;
     let code = 'http-error';
+    let rawText = '';
     try {
-      const body = (await response.json()) as { error?: string; code?: string };
-      if (body.error) message = body.error;
-      if (body.code) code = body.code;
+      rawText = await response.text();
     } catch {
+      // ignore
+    }
+    let parsedBody: { error?: string; code?: string } | null = null;
+    if (rawText) {
       try {
-        const text = await response.text();
-        if (text) message = text.slice(0, 300);
+        parsedBody = JSON.parse(rawText) as { error?: string; code?: string };
       } catch {
-        // ignore
+        parsedBody = null;
       }
+    }
+    if (parsedBody?.error) {
+      message = parsedBody.error;
+      if (parsedBody.code) code = parsedBody.code;
+    } else if (rawText) {
+      // 非 JSON 响应（例如反向代理返回 HTML 错误页）：给出可读片段
+      message = `请求失败（HTTP ${response.status}）：${rawText.replace(/\s+/g, ' ').slice(0, 200)}`;
     }
     const error = { code, message, retryable: response.status >= 500 || response.status === 429 };
     handlers.onError?.(error);

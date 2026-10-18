@@ -38,19 +38,11 @@ function tokenize(text: string): string[] {
     if (SegmenterCtor) {
       try {
         const seg = new SegmenterCtor('zh', { granularity: 'word' });
-        let buf = '';
         for (const { segment } of seg.segment(line)) {
-          if (/^\s+$/.test(segment)) {
-            if (buf) {
-              tokens.push(buf);
-              buf = '';
-            }
-            tokens.push(segment);
-          } else {
-            buf += segment;
-          }
+          // 每个 segment 独立成为 token：中文没有空格，若把非空白 segment 累积
+          // 到下一个空白才输出，整行会退化成一个 token，diff 就变成整行替换。
+          tokens.push(segment);
         }
-        if (buf) tokens.push(buf);
         return;
       } catch {
         // fall through

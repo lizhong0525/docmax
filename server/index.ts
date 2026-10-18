@@ -63,9 +63,15 @@ async function mountFrontend(): Promise<void> {
 // 统一错误处理（JSON 解析失败、处理函数抛错等）
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
+  const status = typeof (err as { status?: unknown })?.status === 'number' ? (err as { status: number }).status : 500;
+  const isJsonParseError = err instanceof SyntaxError && (err as SyntaxError & { type?: string }).type === 'entity.parse.failed';
+  if (isJsonParseError) {
+    if (!res.headersSent) res.status(400).json({ code: 'bad-json', error: '请求体不是合法 JSON。' });
+    return;
+  }
   console.error('[server] 未处理的错误:', err);
   if (!res.headersSent) {
-    res.status(500).json({ code: 'internal-error', error: `服务端错误：${message}` });
+    res.status(status >= 400 && status < 600 ? status : 500).json({ code: 'internal-error', error: `服务端错误：${message}` });
   } else if (!res.writableEnded) {
     res.end();
   }
