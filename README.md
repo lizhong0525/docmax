@@ -1,58 +1,123 @@
 # DocMax
 
-极简 Markdown 编辑器，把 DeepSeek 变成「只改你选中那段字」的编辑引擎。
+**把 DeepSeek 变成「只改你选中那段字」的编辑引擎。**
+一个本地运行的极简 Markdown 编辑器：选中文字 → 说一句怎么改 → 模型流式返回 → 词级差异审阅 → 接受（一步撤销）/ 放弃。
 
-选中文字 → 说一句怎么改 → 模型流式返回 → 词级差异审阅 → 接受（一步撤销）/ 放弃。
-默认配置下，一次段落修改约 **1 秒**、成本约 **$0.0002**。
+[项目主页（HTML）](https://lizhong0525.github.io/docmax/) · [设计说明](DESIGN.md) · [验证报告](docs/ui-verification.md) · [Word 导入](#从-word-导入docx--markdown)
 
-```
-选中文字  ──►  Ctrl/⌘ K  ──►  「润色这段话，更简洁专业」
-                                   │
-                                   ▼
-              DeepSeek V4.1 Flash（流式，本地服务代理）
-                                   │
-                                   ▼
-      服务端：结构解析 → 校验 → 失败自动修复 → 提案（proposal）
-                                   │
-                                   ▼
-      词级 diff + 分级警告 → 接受（单个事务，Ctrl+Z 一步撤销）/ 放弃
-```
+![许可证](https://img.shields.io/badge/license-未声明-lightgrey)
+![Node](https://img.shields.io/badge/Node-%E2%89%A522-339933)
+![DeepSeek](https://img.shields.io/badge/DeepSeek-V4.1%20Flash-4D6BFE)
+![Tests](https://img.shields.io/badge/tests-251%2F251-brightgreen)
+![E2E](https://img.shields.io/badge/E2E-11%2F11-brightgreen)
 
-## 为什么是它
+![审阅面板：本地识别 + 模型识别 + 词级 diff](docs/screenshots/03-review-diff.png)
 
-- **选区精确**：选区以「偏移 + 原文 + 指纹 + 前后文」快照传给模型；应用前再次比对，模型思考期间你继续编辑也不会错位。
-- **默认整选区替换**：没有「搜索锚点幻觉」；长选区/机械替换才切换为带分层匹配与唯一性约束的锚点补丁。
-- **模型输出永不直接信任**：哨兵协议 + 流式容错解析 + 截断/泄漏/结构校验 + 一次自动修复重试。
-- **识别看得见**：本地确定性识别（块类型、代码围栏、词边界、标记平衡）+ 模型识别（kind/language/summary）都展示在界面上。
-- **本地优先**：Node 服务持有 API Key，文档不上传第三方；浏览器直接读写本地文件。
+---
 
-设计与工程取舍详见 [DESIGN.md](./DESIGN.md)。
+## 它解决什么问题
+
+市面上的「AI 写作」大多像聊天：生成整段文字，再让你自己复制粘贴。DocMax 反过来——**编辑器的原子操作是「替换一个精确选区」**，并且把「模型可能改错地方」这件事当成一等工程问题来解：
+
+| 风险 | DocMax 的做法 |
+| --- | --- |
+| 模型输出跑偏、带前言/围栏/截断 | 哨兵协议 + 流式容错解析 + `finish_reason` 截断检测 |
+| 模型改了选区外的内容 | 默认**整选区替换**；surgical 模式锚点必须唯一命中；应用前逐字校验快照 |
+| 模型思考期间用户继续编辑导致错位 | 选区快照 = 偏移 + 原文 + 指纹 + 前后文，应用前二次比对 |
+| 模型把「上下文」一起吐回来造成重复 | 上下文泄漏校验（≥40 字符前后文出现在结果里 → error） |
+| 结构被破坏（代码围栏、表格、标题标记） | Markdown 结构校验 + 分级警告 + 一次自动修复重试 |
+| 审阅重、撤销难 | 提案只进 UI，不进文档；接受时**单个 CodeMirror transaction**，一次 Ctrl+Z 回滚 |
+
+## 功能
+
+**编辑器**
+- CodeMirror 6：Markdown 语法高亮、真实选区模型、原生撤销/重做、CJK 舒适排版
+- 纸感浅色 / 深色双主题，桌面与窄屏自适应
+- 本地文件打开 / 保存（File System Access API，Chrome/Edge；不支持时退化为上传/下载）
+- localStorage 自动保存，Markdown 预览（marked + DOMPurify）
+
+**模型选区编辑**
+- `Ctrl/⌘ K` 指令条：润色 / 更简洁 / 扩写 / 缩写 / 改写 / 翻译 / 修正 / 解释，也可自由输入
+- 三种编辑模式：**整体重写**（默认，≤4000 字）、**局部精准修改**（长选区/机械替换）、**光标插入**
+- 「解释」模式只回答关于选区的问题，不修改文档
+- 流式审阅：阶段（连接/思考/生成/校验/修复）、模型识别结果、思考过程（可折叠）、token 与首字延迟
+- 词级 diff（CJK 友好）+ 分级警告；红色警告（截断/上下文泄漏）需二次确认
+- 接受、拒绝、重新生成、过期快照保护；接受后可一步撤销
+
+**Word 导入**
+- 顶栏「导入 Word」：`.docx` → 标准 Markdown，语义保留标题/列表/表格/链接/引用/代码块
+- 图片不导出，替换为可读占位符，避免 Markdown 体积爆炸
+- 转换前展示摘要与预览，确认后替换当前文档
+- 同样的转换能力可脱离界面使用：`pnpm docx2md` CLI 或 `POST /api/import/docx`
+
+**工程与质量**
+- 前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换
+- 服务端唯一持有 API Key；文档仅发送给 DeepSeek
+- 251 个单元测试、30 例真实模型评测、11 个 Playwright E2E、完整验证报告
+
+## 截图
+
+| | |
+| --- | --- |
+| ![选区识别 + 指令条](docs/screenshots/02-command-payload.png) | ![审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) |
+| **选区识别 + 指令条**：块类型、词边界、payload 快照 | **审阅面板**：本地识别、模型识别、词级 diff、token |
+| ![深色模式](docs/screenshots/04-dark.png) | ![Word 导入](docs/screenshots/07-docx-import.png) |
+| **深色模式**：纸感深色 + 朱砂强调色 | **Word 导入**：摘要、预览、替换确认 |
 
 ## 快速开始
 
-需要 Node.js ≥ 22（开发时用 Node 24 验证）。
+需要 **Node.js ≥ 22**（开发时使用 Node 24 验证）与一个 DeepSeek API Key（[获取地址](https://platform.deepseek.com/api_keys)）。
 
 ```bash
-pnpm install                # 或 npm install
-cp .env.example .env        # 填入 DEEPSEEK_API_KEY
-pnpm dev                    # http://127.0.0.1:5199
+git clone https://github.com/lizhong0525/docmax.git
+cd docmax
+pnpm install                 # 或 npm install
+cp .env.example .env         # 填入 DEEPSEEK_API_KEY
+pnpm dev                     # http://127.0.0.1:5199
 ```
 
-`.env`：
+`.env` 配置：
 
 ```ini
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_BASE_URL=https://api.deepseek.com   # 可选
-PORT=5199                                    # 可选
-DOCMAX_MODEL=deepseek-flash                  # 可选：deepseek-flash | deepseek-v4-pro
+DEEPSEEK_API_KEY=sk-...                     # 必填
+DEEPSEEK_BASE_URL=https://api.deepseek.com  # 可选（OpenAI 兼容网关）
+PORT=5199                                   # 可选
+DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
+DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
 ```
 
 生产运行：
 
 ```bash
 pnpm build
-pnpm start                  # 服务 dist/ + API，同样一个端口
+pnpm start                   # 一个进程同时服务 dist/ 与 API
 ```
+
+> 没有 API Key 也能打开编辑器、写 Markdown、导入 Word；AI 修改会提示配置 Key。
+
+## 使用
+
+选中任意文字后：
+
+- 点击浮出的「✦ AI 修改」，或按 `Ctrl/⌘ K` 打开指令条
+- 输入指令（`Enter` 提交，`Shift+Enter` 换行），或用快捷标签
+- 等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告
+- `Ctrl/⌘ Enter` 接受（一次性应用），`Esc` 放弃
+- 接受后按 `Ctrl/⌘ Z`，**一步撤销**回到修改前
+
+常用快捷键：
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `Ctrl/⌘ K` | 打开指令条 / 修改选区 |
+| `Ctrl/⌘ Enter` | 接受当前提案 |
+| `Esc` | 取消 / 关闭浮层 / 中止生成 |
+| `Ctrl/⌘ Z` | 撤销（含一次 AI 应用） |
+| `Ctrl/⌘ Shift Z` | 重做 |
+| `Ctrl/⌘ O` | 打开 Markdown 文件 |
+| `Ctrl/⌘ S` / `Ctrl/⌘ Shift S` | 保存 / 另存为 |
+| `Ctrl/⌘ P` | 切换 Markdown 预览 |
+| `Ctrl/⌘ /` | 快捷键帮助 |
 
 ## 从 Word 导入（docx → Markdown）
 
@@ -84,14 +149,51 @@ curl -X POST "http://127.0.0.1:5199/api/import/docx?name=a.docx" \
 
 已知限制：Word 里纯手工排版的“伪标题”（未使用标题样式）会按普通段落处理；合并单元格会被展平；页眉页脚、批注、修订痕迹不导出；表格表头仅在 Word 标记了“标题行重复”时识别，否则生成空表头以保留全部数据行。
 
-## 使用
+## 工程方法（简要）
 
-- 选中任意文字 → 出现「✦ AI 修改」浮标，或按 `Ctrl/⌘ K`
-- 输入指令，或用快捷 chips：润色 / 更简洁 / 扩写 / 缩写 / 改写 / 翻译 / 修正 / 解释
-- 审阅面板会显示：模型识别、流式结果、词级 diff、警告（截断、上下文泄漏、结构破坏等）
-- `Ctrl/⌘ Enter` 接受，`Esc` 放弃；接受后 `Ctrl/⌘ Z` 一步撤销
-- `Ctrl/⌘ O` 打开本地 `.md`，`Ctrl/⌘ S` 保存，`Ctrl/⌘ P` 预览
-- 文档自动保存在浏览器 localStorage
+```
+浏览器（React 19 + CodeMirror 6）
+   │  POST /api/edit（SSE，本地回环）
+   ▼
+Node 单进程（Express 5 + Vite middleware）
+   ├─ 请求/选区快照校验（偏移 + 原文 + 指纹 + 前后文）
+   ├─ 本地确定性选区识别（块类型/围栏/词边界/标记平衡）
+   ├─ 提示词 + 每请求随机哨兵标记
+   ├─ DeepSeek 流式调用（content / reasoning_content / usage / finish_reason）
+   ├─ 流式容错解析 → 分层锚点匹配 → 结构/泄漏校验 → 失败自动修复一次
+   └─ 已校验提案（proposal）→ 前端词级 diff → 用户接受/拒绝
+```
+
+几个关键取舍（完整理由与实测数据见 [DESIGN.md](DESIGN.md)）：
+
+- **默认整选区替换，而不是让模型找位置**：没有锚点幻觉；长选区才切换为带唯一性约束的 FIND/REPLACE 锚点补丁。
+- **模型输出是不可信输入**：只有通过解析 + 校验的内容才会变成提案；截断内容绝不静默应用。
+- **识别分两层**：本地确定性识别（立即可靠）+ 模型结构化识别（`kind/language/summary`），都展示给你看。
+- **流式只进 UI，不进文档**：避免撤销历史被 token 弄脏，接受时一次性提交事务。
+- **本地 Web 应用**：一条命令启动、API Key 留服务端、可读写本地文件，也能用真实浏览器做端到端验证。
+
+## 验证结果
+
+| 项目 | 结果 |
+| --- | --- |
+| 核心单元测试 | **251 / 251 通过**（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换） |
+| 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
+| 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
+| 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
+| 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
+| E2E（真实 Chrome + 真实 DeepSeek） | **11 / 11 通过**：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
+| UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
+
+完整数据与可复跑命令见 [评测报告](.research/eval-report.md)、[验证报告](.research/verification-report.md)、[UI 验收报告](docs/ui-verification.md)。
+
+```powershell
+# 单元测试
+node node_modules/vitest/vitest.mjs run
+# 真实模型评测（需服务已启动，约 40–60s，成本约 $0.004）
+node node_modules/tsx/dist/cli.mjs scripts/eval.ts
+# Playwright E2E（需服务已启动）
+node node_modules/@playwright/test/cli.js test
+```
 
 ## 命令
 
@@ -100,12 +202,24 @@ curl -X POST "http://127.0.0.1:5199/api/import/docx?name=a.docx" \
 | `pnpm dev` | 开发模式（Vite HMR + API，单端口） |
 | `pnpm start` | 生产模式（需先 `pnpm build`） |
 | `pnpm typecheck` | 前端 + 服务端 TypeScript 检查 |
-| `pnpm test` | vitest 单元测试（核心解析/匹配/校验/选区） |
-| `pnpm eval` | 真实 DeepSeek 端到端评测（需服务已启动），报告输出到 `.research/eval-report.md` |
+| `pnpm test` | vitest 单元测试 |
+| `pnpm eval` | 真实 DeepSeek 端到端评测（需服务已启动） |
 | `pnpm docx2md` | 命令行 docx → Markdown 转换（不经过模型） |
 | `pnpm e2e` | Playwright 浏览器端到端测试（需服务已启动） |
+| `pnpm landing` | 由 README 生成 HTML 项目主页（`docs/index.html`） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke.ts` | 端到端冒烟（rewrite） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke-modes.ts` | 端到端冒烟（surgical / insert / ask / no-op） |
+
+## API 摘要
+
+服务默认只监听 `127.0.0.1`，仅供本地前端使用：
+
+| 端点 | 说明 |
+| --- | --- |
+| `GET /api/health` | 服务状态、是否已配置 API Key、当前模型 |
+| `GET /api/config` | 公开配置（模型列表、限额、默认值） |
+| `POST /api/edit` | 选区编辑，SSE 流：`meta → status → reasoning/delta → proposal → done` |
+| `POST /api/import/docx` | 请求体为 `.docx` 二进制，返回 Markdown + 统计 + 警告 |
 
 ## 项目结构
 
@@ -128,7 +242,8 @@ server/            Node/Express 服务（唯一持有 API Key 的进程）
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
-scripts/           冒烟、评测、API 自检、docx2md CLI
+scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成
+docs/             HTML 项目主页与截图
 ```
 
 ## 安全与隐私
@@ -136,36 +251,21 @@ scripts/           冒烟、评测、API 自检、docx2md CLI
 - API Key 只存在于服务端 `.env`（已 gitignore），不会下发到浏览器；
 - 服务默认只监听 `127.0.0.1`；
 - 文档内容仅发送给 DeepSeek API，不经过其他第三方；
-- 文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险。
-
-## 验证结果（2026-10-18 实测）
-
-| 项目 | 结果 |
-| --- | --- |
-| 核心单元测试 | **251 / 251 通过**（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换） |
-| 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
-| 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
-| 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
-| 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
-| E2E（真实 Chrome + 真实 DeepSeek） | **11 / 11 通过**：AI 修改的接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
-| UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
-
-完整数据与可复跑命令见 [`.research/eval-report.md`](.research/eval-report.md)、[`.research/verification-report.md`](.research/verification-report.md)、[`docs/ui-verification.md`](docs/ui-verification.md)。
-
-关键截图：[初始界面](docs/screenshots/01-initial.png) · [选区识别 + 指令条](docs/screenshots/02-command-payload.png) · [审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) · [深色模式](docs/screenshots/04-dark.png) · [窄屏](docs/screenshots/05-narrow-command.png) · [空文档](docs/screenshots/06-empty-document.png) · [Word 导入](#从-word-导入docx--markdown)（[对话框](docs/screenshots/07-docx-import.png) / [图片占位](docs/screenshots/08-docx-images-placeholder.png)）
-
-```powershell
-# 单元测试
-node node_modules/vitest/vitest.mjs run
-# 真实模型评测（需服务已启动，约 40–60s，成本约 $0.004）
-node node_modules/tsx/dist/cli.mjs scripts/eval.ts
-# Playwright E2E（需服务已启动）
-node node_modules/@playwright/test/cli.js test
-```
+- 文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；
+- Word 转换禁用外部文件访问，并过滤 `javascript:` / `data:` / `file:` 等危险链接。
 
 ## 已知限制
 
 - 多选区目前逐个串行处理，尚未合并为一次请求；
 - surgical 模式遇到选区内大量重复短句时可能触发一次自动修复重试（已有 `FIND_ALL` 支持）；
 - 仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；
-- 协同编辑 / 云同步未实现（本地优先是有意选择）。
+- 协同编辑 / 云同步未实现（本地优先是有意选择）；
+- Word 导入为语义转换，不保证版式级还原（详见上文限制）。
+
+## 许可
+
+暂未声明开源许可证（默认保留所有权利）。如需 MIT / Apache-2.0 等协议，欢迎 issue 或直接联系作者。
+
+## 技术栈
+
+React 19 · TypeScript 5.9 · Vite 8 · CodeMirror 6 · Express 5 · DeepSeek API（`deepseek-flash` / `deepseek-v4-pro`）· mammoth + turndown · vitest · Playwright

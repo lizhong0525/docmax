@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<meta name="description" content="DocMax：本地运行的极简 Markdown 编辑器，接入 DeepSeek，精确选区识别与替换修改，支持 Word 导入。" />
+<title>DocMax · 极简 Markdown 编辑器 · DeepSeek 选区编辑</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b1a18'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%23e8e2d6'%3E%E2%9C%A6%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+    --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', SimSun, serif;
+    --font-mono: 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
+    --canvas: #ece8df; --paper: #faf8f2; --paper-deep: #f3efe5;
+    --ink: #211f1b; --ink-soft: #3b3832; --muted: #726b5f; --faint: #999183;
+    --rule: #d8d0c2; --rule-strong: #c2b8a7;
+    --accent: #a8402b; --accent-ink: #8d3524; --accent-soft: #f0e0d8;
+    --code-bg: #f1ece1; --code-ink: #3f3a32;
+    --shadow: 0 1px 2px rgba(33,31,27,.05); --shadow-lift: 0 18px 42px -18px rgba(33,31,27,.32);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #121110; --paper: #191816; --paper-deep: #1f1d1a;
+      --ink: #e8e2d7; --ink-soft: #d3ccc0; --muted: #9a9285; --faint: #7c7468;
+      --rule: #322e28; --rule-strong: #453f36;
+      --accent: #d97a5f; --accent-ink: #e4927a; --accent-soft: #33231e;
+      --code-bg: #201e1a; --code-ink: #d8d1c3;
+      --shadow: 0 1px 2px rgba(0,0,0,.35); --shadow-lift: 0 18px 42px -18px rgba(0,0,0,.7);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: var(--font-ui); font-size: 16px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--accent-ink); }
+  code, kbd, pre { font-family: var(--font-mono); }
+  .top {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px clamp(18px, 5vw, 48px);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    border-bottom: 1px solid var(--rule);
+    backdrop-filter: blur(6px);
+  }
+  .brand {
+    font-family: var(--font-serif); font-weight: 600; font-size: 19px;
+    color: var(--ink); text-decoration: none; letter-spacing: .01em; white-space: nowrap;
+  }
+  .brand .mark { color: var(--accent); }
+  .top-links { display: flex; gap: 16px; margin-left: auto; flex-wrap: wrap; font-size: 13px; }
+  .top-links a { color: var(--muted); text-decoration: none; }
+  .top-links a:hover { color: var(--ink); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 clamp(18px, 5vw, 48px); }
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: clamp(28px, 5vw, 64px); align-items: center;
+    padding: clamp(40px, 7vw, 88px) 0 clamp(28px, 5vw, 56px);
+  }
+  .eyebrow {
+    margin: 0 0 14px; font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600;
+  }
+  .hero h1 {
+    margin: 0; font-family: var(--font-serif); font-weight: 600;
+    font-size: clamp(44px, 7vw, 76px); line-height: 1.02; letter-spacing: -.01em;
+  }
+  .lede {
+    margin: 18px 0 0; font-family: var(--font-serif);
+    font-size: clamp(19px, 2.4vw, 25px); line-height: 1.5; color: var(--ink);
+  }
+  .sub { margin: 14px 0 0; max-width: 34em; color: var(--muted); font-size: 15px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 16px; border: 1px solid var(--rule-strong); border-radius: 2px;
+    font-size: 13.5px; text-decoration: none; color: var(--ink); background: var(--paper);
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .btn:hover { border-color: var(--ink-soft); color: var(--ink); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff8f2; }
+  .btn.primary:hover { background: var(--accent-ink); color: #fff8f2; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; padding: 0; list-style: none; }
+  .chips li {
+    font-size: 12px; color: var(--muted); padding: 3px 10px;
+    border: 1px solid var(--rule); border-radius: 999px; background: var(--paper-deep);
+  }
+  .hero-shot { margin: 0; }
+  .hero-shot img {
+    display: block; width: 100%; height: auto; border: 1px solid var(--rule-strong);
+    border-top: 2px solid var(--accent); border-radius: 2px;
+    box-shadow: var(--shadow-lift); background: var(--paper);
+  }
+  .hero-shot figcaption { margin-top: 10px; font-size: 12px; color: var(--faint); text-align: right; }
+  .section-nav {
+    display: flex; gap: 6px 14px; flex-wrap: wrap;
+    padding: 14px 0 18px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    font-size: 13px;
+  }
+  .section-nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+  .section-nav a:hover { color: var(--accent); }
+  .prose { max-width: 860px; margin: 0 auto; padding: clamp(28px, 5vw, 56px) 0 72px; }
+  .prose h2 {
+    margin: 64px 0 18px; padding-top: 26px; border-top: 1px solid var(--rule);
+    font-family: var(--font-serif); font-size: clamp(24px, 3vw, 31px); font-weight: 600; line-height: 1.25;
+  }
+  .prose h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .prose h3 { margin: 34px 0 12px; font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
+  .prose p { margin: 14px 0; color: var(--ink-soft); }
+  .prose strong { color: var(--ink); }
+  .prose ul, .prose ol { padding-left: 1.35em; color: var(--ink-soft); }
+  .prose li { margin: 6px 0; }
+  .prose li::marker { color: var(--accent); }
+  .prose blockquote {
+    margin: 20px 0; padding: 10px 18px; border-left: 3px solid var(--accent);
+    background: var(--paper-deep); color: var(--muted);
+  }
+  .prose table {
+    width: 100%; border-collapse: collapse; margin: 22px 0; font-size: 14.5px;
+    background: var(--paper); border: 1px solid var(--rule);
+  }
+  .prose th, .prose td { padding: 9px 13px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+  .prose th { background: var(--paper-deep); font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .prose tr:last-child td { border-bottom: none; }
+  .prose code:not(pre code) {
+    background: var(--code-bg); color: var(--code-ink); padding: 1px 5px;
+    border-radius: 2px; font-size: .9em;
+  }
+  .prose pre {
+    margin: 22px 0; padding: 16px 18px; overflow: auto;
+    background: var(--code-bg); border: 1px solid var(--rule); border-radius: 2px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .prose pre code { background: none; padding: 0; }
+  .prose img {
+    display: block; max-width: 100%; height: auto; margin: 20px auto;
+    border: 1px solid var(--rule-strong); border-radius: 2px; background: var(--paper);
+    box-shadow: var(--shadow);
+  }
+  .prose hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+  .prose a { overflow-wrap: anywhere; }
+  footer {
+    border-top: 1px solid var(--rule); background: var(--paper);
+    padding: 30px clamp(18px, 5vw, 48px) 48px;
+  }
+  footer .inner {
+    max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px 26px;
+    align-items: baseline; font-size: 13px; color: var(--muted);
+  }
+  footer a { color: var(--muted); }
+  footer .generated { margin-left: auto; color: var(--faint); font-size: 12px; }
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: minmax(0, 1fr); padding-top: 34px; }
+    .hero h1 { font-size: clamp(42px, 12vw, 60px); }
+    .prose h2 { scroll-margin-top: 64px; }
+    .prose table { display: block; overflow-x: auto; white-space: nowrap; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body id="top">
+  <header class="top">
+    <a class="brand" href="#top"><span class="mark">✦</span> DocMax</a>
+    <nav class="top-links" aria-label="页面导航">
+      <a href="https://github.com/lizhong0525/docmax">GitHub</a>
+      <a href="#快速开始">快速开始</a>
+      <a href="https://github.com/lizhong0525/docmax/blob/main/DESIGN.md">设计说明</a>
+      <a href="#验证结果">验证结果</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">Markdown · DeepSeek · Local-first</p>
+        <h1>DocMax</h1>
+        <p class="lede">把 DeepSeek 变成「只改你选中那段字」的编辑引擎。</p>
+        <p class="sub">
+          本地运行的极简 Markdown 编辑器：精确选区识别、流式生成、词级 diff 审阅、一步撤销；
+          内置 Word 导入（docx → Markdown）。默认配置下一次段落修改约 1 秒、成本约 $0.0002。
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/lizhong0525/docmax">查看 GitHub 仓库</a>
+          <a class="btn" href="#快速开始">快速开始</a>
+          <a class="btn" href="https://github.com/lizhong0525/docmax/blob/main/DESIGN.md">设计说明</a>
+        </div>
+        <ul class="chips">
+          <li>Node ≥ 22</li>
+          <li>DeepSeek V4.1 Flash</li>
+          <li>251 单元测试</li>
+          <li>11 E2E</li>
+          <li>本地优先</li>
+        </ul>
+      </div>
+      <figure class="hero-shot">
+        <img src="screenshots/03-review-diff.png" alt="DocMax 审阅面板：本地识别、模型识别与词级差异" />
+        <figcaption>审查每次修改：本地识别 + 模型识别 + 词级 diff</figcaption>
+      </figure>
+    </section>
+
+    <nav class="section-nav" aria-label="章节">
+        <a href="#它解决什么问题">它解决什么问题</a>
+        <a href="#功能">功能</a>
+        <a href="#截图">截图</a>
+        <a href="#快速开始">快速开始</a>
+        <a href="#使用">使用</a>
+        <a href="#从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</a>
+        <a href="#工程方法简要">工程方法（简要）</a>
+        <a href="#验证结果">验证结果</a>
+        <a href="#命令">命令</a>
+        <a href="#api-摘要">API 摘要</a>
+        <a href="#项目结构">项目结构</a>
+        <a href="#安全与隐私">安全与隐私</a>
+        <a href="#已知限制">已知限制</a>
+        <a href="#许可">许可</a>
+        <a href="#技术栈">技术栈</a>
+    </nav>
+
+    <article class="prose">
+<h2 id="它解决什么问题">它解决什么问题</h2>
+<p>市面上的「AI 写作」大多像聊天：生成整段文字，再让你自己复制粘贴。DocMax 反过来——<strong>编辑器的原子操作是「替换一个精确选区」</strong>，并且把「模型可能改错地方」这件事当成一等工程问题来解：</p>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>DocMax 的做法</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>模型输出跑偏、带前言/围栏/截断</td>
+<td>哨兵协议 + 流式容错解析 + <code>finish_reason</code> 截断检测</td>
+</tr>
+<tr>
+<td>模型改了选区外的内容</td>
+<td>默认<strong>整选区替换</strong>；surgical 模式锚点必须唯一命中；应用前逐字校验快照</td>
+</tr>
+<tr>
+<td>模型思考期间用户继续编辑导致错位</td>
+<td>选区快照 = 偏移 + 原文 + 指纹 + 前后文，应用前二次比对</td>
+</tr>
+<tr>
+<td>模型把「上下文」一起吐回来造成重复</td>
+<td>上下文泄漏校验（≥40 字符前后文出现在结果里 → error）</td>
+</tr>
+<tr>
+<td>结构被破坏（代码围栏、表格、标题标记）</td>
+<td>Markdown 结构校验 + 分级警告 + 一次自动修复重试</td>
+</tr>
+<tr>
+<td>审阅重、撤销难</td>
+<td>提案只进 UI，不进文档；接受时<strong>单个 CodeMirror transaction</strong>，一次 Ctrl+Z 回滚</td>
+</tr>
+</tbody></table>
+<h2 id="功能">功能</h2>
+<p><strong>编辑器</strong></p>
+<ul>
+<li>CodeMirror 6：Markdown 语法高亮、真实选区模型、原生撤销/重做、CJK 舒适排版</li>
+<li>纸感浅色 / 深色双主题，桌面与窄屏自适应</li>
+<li>本地文件打开 / 保存（File System Access API，Chrome/Edge；不支持时退化为上传/下载）</li>
+<li>localStorage 自动保存，Markdown 预览（marked + DOMPurify）</li>
+</ul>
+<p><strong>模型选区编辑</strong></p>
+<ul>
+<li><code>Ctrl/⌘ K</code> 指令条：润色 / 更简洁 / 扩写 / 缩写 / 改写 / 翻译 / 修正 / 解释，也可自由输入</li>
+<li>三种编辑模式：<strong>整体重写</strong>（默认，≤4000 字）、<strong>局部精准修改</strong>（长选区/机械替换）、<strong>光标插入</strong></li>
+<li>「解释」模式只回答关于选区的问题，不修改文档</li>
+<li>流式审阅：阶段（连接/思考/生成/校验/修复）、模型识别结果、思考过程（可折叠）、token 与首字延迟</li>
+<li>词级 diff（CJK 友好）+ 分级警告；红色警告（截断/上下文泄漏）需二次确认</li>
+<li>接受、拒绝、重新生成、过期快照保护；接受后可一步撤销</li>
+</ul>
+<p><strong>Word 导入</strong></p>
+<ul>
+<li>顶栏「导入 Word」：<code>.docx</code> → 标准 Markdown，语义保留标题/列表/表格/链接/引用/代码块</li>
+<li>图片不导出，替换为可读占位符，避免 Markdown 体积爆炸</li>
+<li>转换前展示摘要与预览，确认后替换当前文档</li>
+<li>同样的转换能力可脱离界面使用：<code>pnpm docx2md</code> CLI 或 <code>POST /api/import/docx</code></li>
+</ul>
+<p><strong>工程与质量</strong></p>
+<ul>
+<li>前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换</li>
+<li>服务端唯一持有 API Key；文档仅发送给 DeepSeek</li>
+<li>251 个单元测试、30 例真实模型评测、11 个 Playwright E2E、完整验证报告</li>
+</ul>
+<h2 id="截图">截图</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><img src="screenshots/02-command-payload.png" alt="选区识别 + 指令条"></td>
+<td><img src="screenshots/03-review-diff.png" alt="审阅面板（词级 diff）"></td>
+</tr>
+<tr>
+<td><strong>选区识别 + 指令条</strong>：块类型、词边界、payload 快照</td>
+<td><strong>审阅面板</strong>：本地识别、模型识别、词级 diff、token</td>
+</tr>
+<tr>
+<td><img src="screenshots/04-dark.png" alt="深色模式"></td>
+<td><img src="screenshots/07-docx-import.png" alt="Word 导入"></td>
+</tr>
+<tr>
+<td><strong>深色模式</strong>：纸感深色 + 朱砂强调色</td>
+<td><strong>Word 导入</strong>：摘要、预览、替换确认</td>
+</tr>
+</tbody></table>
+<h2 id="快速开始">快速开始</h2>
+<p>需要 <strong>Node.js ≥ 22</strong>（开发时使用 Node 24 验证）与一个 DeepSeek API Key（<a href="https://platform.deepseek.com/api_keys">获取地址</a>）。</p>
+<pre><code class="language-bash">git clone https://github.com/lizhong0525/docmax.git
+cd docmax
+pnpm install                 # 或 npm install
+cp .env.example .env         # 填入 DEEPSEEK_API_KEY
+pnpm dev                     # http://127.0.0.1:5199
+</code></pre>
+<p><code>.env</code> 配置：</p>
+<pre><code class="language-ini">DEEPSEEK_API_KEY=sk-...                     # 必填
+DEEPSEEK_BASE_URL=https://api.deepseek.com  # 可选（OpenAI 兼容网关）
+PORT=5199                                   # 可选
+DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
+DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
+</code></pre>
+<p>生产运行：</p>
+<pre><code class="language-bash">pnpm build
+pnpm start                   # 一个进程同时服务 dist/ 与 API
+</code></pre>
+<blockquote>
+<p>没有 API Key 也能打开编辑器、写 Markdown、导入 Word；AI 修改会提示配置 Key。</p>
+</blockquote>
+<h2 id="使用">使用</h2>
+<p>选中任意文字后：</p>
+<ul>
+<li>点击浮出的「✦ AI 修改」，或按 <code>Ctrl/⌘ K</code> 打开指令条</li>
+<li>输入指令（<code>Enter</code> 提交，<code>Shift+Enter</code> 换行），或用快捷标签</li>
+<li>等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告</li>
+<li><code>Ctrl/⌘ Enter</code> 接受（一次性应用），<code>Esc</code> 放弃</li>
+<li>接受后按 <code>Ctrl/⌘ Z</code>，<strong>一步撤销</strong>回到修改前</li>
+</ul>
+<p>常用快捷键：</p>
+<table>
+<thead>
+<tr>
+<th>快捷键</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Ctrl/⌘ K</code></td>
+<td>打开指令条 / 修改选区</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ Enter</code></td>
+<td>接受当前提案</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>取消 / 关闭浮层 / 中止生成</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ Z</code></td>
+<td>撤销（含一次 AI 应用）</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ Shift Z</code></td>
+<td>重做</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ O</code></td>
+<td>打开 Markdown 文件</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ S</code> / <code>Ctrl/⌘ Shift S</code></td>
+<td>保存 / 另存为</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ P</code></td>
+<td>切换 Markdown 预览</td>
+</tr>
+<tr>
+<td><code>Ctrl/⌘ /</code></td>
+<td>快捷键帮助</td>
+</tr>
+</tbody></table>
+<h2 id="从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</h2>
+<p>Word 文档不想手动重排？点顶栏 <strong>「导入 Word」</strong>，选择 <code>.docx</code>，DocMax 会先在本地转换：</p>
+<ul>
+<li><strong>标题 / 段落 / 粗体 / 斜体 / 列表 / 表格 / 链接 / 引用 / 代码块</strong>按 Word 样式语义转换为标准 Markdown；</li>
+<li><strong>图片不导出</strong>：转换为可读占位符 <code>&gt; [图片占位 N：image/png，未导出图片文件]</code>（避免 base64 让 md 体积爆炸），转换前可预览；</li>
+<li>转换完成后先展示摘要与 Markdown 预览，确认后<strong>替换当前文档</strong>（请先保存用不到的旧内容），再按 <code>Ctrl/⌘ S</code> 保存为 <code>.md</code>；</li>
+<li>文件大小上限默认 25 MB，可用 <code>DOCMAX_MAX_DOCX_BYTES</code> 调整。</li>
+</ul>
+<p>同样的转换能力也可以脱离界面直接用命令行：</p>
+<pre><code class="language-bash"># 输出到 stdout
+pnpm docx2md 文档.docx
+# 写入文件
+pnpm docx2md 文档.docx -o 文档.md
+# 输出 JSON（含统计与警告）
+pnpm docx2md 文档.docx --json
+</code></pre>
+<p>或者作为本地 HTTP API：</p>
+<pre><code class="language-bash">curl -X POST &quot;http://127.0.0.1:5199/api/import/docx?name=a.docx&quot; \
+  -H &quot;Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot; \
+  --data-binary @a.docx
+</code></pre>
+<p>已知限制：Word 里纯手工排版的“伪标题”（未使用标题样式）会按普通段落处理；合并单元格会被展平；页眉页脚、批注、修订痕迹不导出；表格表头仅在 Word 标记了“标题行重复”时识别，否则生成空表头以保留全部数据行。</p>
+<h2 id="工程方法简要">工程方法（简要）</h2>
+<pre><code>浏览器（React 19 + CodeMirror 6）
+   │  POST /api/edit（SSE，本地回环）
+   ▼
+Node 单进程（Express 5 + Vite middleware）
+   ├─ 请求/选区快照校验（偏移 + 原文 + 指纹 + 前后文）
+   ├─ 本地确定性选区识别（块类型/围栏/词边界/标记平衡）
+   ├─ 提示词 + 每请求随机哨兵标记
+   ├─ DeepSeek 流式调用（content / reasoning_content / usage / finish_reason）
+   ├─ 流式容错解析 → 分层锚点匹配 → 结构/泄漏校验 → 失败自动修复一次
+   └─ 已校验提案（proposal）→ 前端词级 diff → 用户接受/拒绝
+</code></pre>
+<p>几个关键取舍（完整理由与实测数据见 <a href="https://github.com/lizhong0525/docmax/blob/main/DESIGN.md">DESIGN.md</a>）：</p>
+<ul>
+<li><strong>默认整选区替换，而不是让模型找位置</strong>：没有锚点幻觉；长选区才切换为带唯一性约束的 FIND/REPLACE 锚点补丁。</li>
+<li><strong>模型输出是不可信输入</strong>：只有通过解析 + 校验的内容才会变成提案；截断内容绝不静默应用。</li>
+<li><strong>识别分两层</strong>：本地确定性识别（立即可靠）+ 模型结构化识别（<code>kind/language/summary</code>），都展示给你看。</li>
+<li><strong>流式只进 UI，不进文档</strong>：避免撤销历史被 token 弄脏，接受时一次性提交事务。</li>
+<li><strong>本地 Web 应用</strong>：一条命令启动、API Key 留服务端、可读写本地文件，也能用真实浏览器做端到端验证。</li>
+</ul>
+<h2 id="验证结果">验证结果</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>核心单元测试</td>
+<td><strong>251 / 251 通过</strong>（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换）</td>
+</tr>
+<tr>
+<td>真实模型评测</td>
+<td><strong>30 / 30 通过</strong>（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…）</td>
+</tr>
+<tr>
+<td>应用安全性</td>
+<td><strong>选区外零改动率 100%</strong>，提案可应用率 100%，结构校验 100%</td>
+</tr>
+<tr>
+<td>延迟</td>
+<td>总延迟 avg <strong>1.05s</strong> / p50 849ms / p95 2.92s；首字 avg 780ms</td>
+</tr>
+<tr>
+<td>成本</td>
+<td>30 次真实编辑共约 <strong>$0.0038</strong>（缓存命中时，约 $0.00013/次）</td>
+</tr>
+<tr>
+<td>E2E（真实 Chrome + 真实 DeepSeek）</td>
+<td><strong>11 / 11 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理</td>
+</tr>
+<tr>
+<td>UI 验收</td>
+<td><strong>52 / 52 断言通过</strong>，20 张截图，0 console error / 0 pageerror</td>
+</tr>
+</tbody></table>
+<p>完整数据与可复跑命令见 <a href="https://github.com/lizhong0525/docmax/blob/main/.research/eval-report.md">评测报告</a>、<a href="https://github.com/lizhong0525/docmax/blob/main/.research/verification-report.md">验证报告</a>、<a href="https://github.com/lizhong0525/docmax/blob/main/docs/ui-verification.md">UI 验收报告</a>。</p>
+<pre><code class="language-powershell"># 单元测试
+node node_modules/vitest/vitest.mjs run
+# 真实模型评测（需服务已启动，约 40–60s，成本约 $0.004）
+node node_modules/tsx/dist/cli.mjs scripts/eval.ts
+# Playwright E2E（需服务已启动）
+node node_modules/@playwright/test/cli.js test
+</code></pre>
+<h2 id="命令">命令</h2>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>pnpm dev</code></td>
+<td>开发模式（Vite HMR + API，单端口）</td>
+</tr>
+<tr>
+<td><code>pnpm start</code></td>
+<td>生产模式（需先 <code>pnpm build</code>）</td>
+</tr>
+<tr>
+<td><code>pnpm typecheck</code></td>
+<td>前端 + 服务端 TypeScript 检查</td>
+</tr>
+<tr>
+<td><code>pnpm test</code></td>
+<td>vitest 单元测试</td>
+</tr>
+<tr>
+<td><code>pnpm eval</code></td>
+<td>真实 DeepSeek 端到端评测（需服务已启动）</td>
+</tr>
+<tr>
+<td><code>pnpm docx2md</code></td>
+<td>命令行 docx → Markdown 转换（不经过模型）</td>
+</tr>
+<tr>
+<td><code>pnpm e2e</code></td>
+<td>Playwright 浏览器端到端测试（需服务已启动）</td>
+</tr>
+<tr>
+<td><code>pnpm landing</code></td>
+<td>由 README 生成 HTML 项目主页（<code>docs/index.html</code>）</td>
+</tr>
+<tr>
+<td><code>node node_modules/tsx/dist/cli.mjs scripts/smoke.ts</code></td>
+<td>端到端冒烟（rewrite）</td>
+</tr>
+<tr>
+<td><code>node node_modules/tsx/dist/cli.mjs scripts/smoke-modes.ts</code></td>
+<td>端到端冒烟（surgical / insert / ask / no-op）</td>
+</tr>
+</tbody></table>
+<h2 id="api-摘要">API 摘要</h2>
+<p>服务默认只监听 <code>127.0.0.1</code>，仅供本地前端使用：</p>
+<table>
+<thead>
+<tr>
+<th>端点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>GET /api/health</code></td>
+<td>服务状态、是否已配置 API Key、当前模型</td>
+</tr>
+<tr>
+<td><code>GET /api/config</code></td>
+<td>公开配置（模型列表、限额、默认值）</td>
+</tr>
+<tr>
+<td><code>POST /api/edit</code></td>
+<td>选区编辑，SSE 流：<code>meta → status → reasoning/delta → proposal → done</code></td>
+</tr>
+<tr>
+<td><code>POST /api/import/docx</code></td>
+<td>请求体为 <code>.docx</code> 二进制，返回 Markdown + 统计 + 警告</td>
+</tr>
+</tbody></table>
+<h2 id="项目结构">项目结构</h2>
+<pre><code>src/core/          前后端共享的纯 TS 核心
+  types.ts         唯一契约：选区快照、请求/提案、SSE 事件
+  selection.ts     选区快照 + 本地确定性识别（块类型/围栏/词边界/标记平衡）
+  markers.ts       哨兵标记（含逐请求随机后缀的碰撞/注入防护）
+  prompt.ts        系统/用户/修复提示词
+  parse.ts         流式容错解析器（rewrite/surgical/ask，处理截断与缺标记）
+  apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
+  diff.ts          CJK 友好的词级 diff
+  protocol.ts      SSE 编码、公开配置
+  client.ts        浏览器端 SSE 客户端
+server/            Node/Express 服务（唯一持有 API Key 的进程）
+  deepseek.ts      DeepSeek 流式客户端 + 错误映射
+  editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
+  docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
+  index.ts         单进程：API + Vite middleware / dist 静态文件
+src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+tests/             vitest 单元测试（含 docx 转换与测试夹具）
+e2e/               Playwright 测试（AI 编辑 + docx 导入）
+scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成
+docs/             HTML 项目主页与截图
+</code></pre>
+<h2 id="安全与隐私">安全与隐私</h2>
+<ul>
+<li>API Key 只存在于服务端 <code>.env</code>（已 gitignore），不会下发到浏览器；</li>
+<li>服务默认只监听 <code>127.0.0.1</code>；</li>
+<li>文档内容仅发送给 DeepSeek API，不经过其他第三方；</li>
+<li>文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；</li>
+<li>Word 转换禁用外部文件访问，并过滤 <code>javascript:</code> / <code>data:</code> / <code>file:</code> 等危险链接。</li>
+</ul>
+<h2 id="已知限制">已知限制</h2>
+<ul>
+<li>多选区目前逐个串行处理，尚未合并为一次请求；</li>
+<li>surgical 模式遇到选区内大量重复短句时可能触发一次自动修复重试（已有 <code>FIND_ALL</code> 支持）；</li>
+<li>仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；</li>
+<li>协同编辑 / 云同步未实现（本地优先是有意选择）；</li>
+<li>Word 导入为语义转换，不保证版式级还原（详见上文限制）。</li>
+</ul>
+<h2 id="许可">许可</h2>
+<p>暂未声明开源许可证（默认保留所有权利）。如需 MIT / Apache-2.0 等协议，欢迎 issue 或直接联系作者。</p>
+<h2 id="技术栈">技术栈</h2>
+<p>React 19 · TypeScript 5.9 · Vite 8 · CodeMirror 6 · Express 5 · DeepSeek API（<code>deepseek-flash</code> / <code>deepseek-v4-pro</code>）· mammoth + turndown · vitest · Playwright</p>
+
+    </article>
+  </main>
+
+  <footer>
+    <div class="inner">
+      <span>DocMax · 极简 Markdown 编辑器</span>
+      <a href="https://github.com/lizhong0525/docmax">GitHub 仓库</a>
+      <a href="https://github.com/lizhong0525/docmax/issues">问题反馈</a>
+      <a href="https://lizhong0525.github.io/docmax/">GitHub Pages</a>
+      <span class="generated">由 README.md 自动生成 · 2026-10-18</span>
+    </div>
+  </footer>
+</body>
+</html>

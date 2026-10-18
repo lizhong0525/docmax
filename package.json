@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "eval": "tsx scripts/eval.ts",
     "docx2md": "tsx scripts/docx2md.ts",
+    "landing": "tsx scripts/build-landing.ts",
     "e2e": "playwright test"
   },
   "dependencies": {
