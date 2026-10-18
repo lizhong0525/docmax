@@ -2,6 +2,8 @@
  * API 层契约自检：请求校验、错误码、模式归一化、SSE 事件齐全性。
  * 用法：服务已启动后 `node node_modules/tsx/dist/cli.mjs scripts/api-check.ts`
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { buildRangeSnapshot } from '../src/core/selection';
 import { defaultEditOptions } from '../src/core/client';
 import type { ServerEvent } from '../src/core/types';
@@ -139,6 +141,48 @@ async function main(): Promise<void> {
   } catch (err) {
     check('中止后客户端收到 AbortError', err instanceof Error && err.name === 'AbortError', String(err));
   }
+
+  console.log('\n[5] DOCX 导入');
+  const docxFixture = readFileSync(resolve('tests/fixtures/docx/basic.docx'));
+  const docxRes = await fetch(`${BASE}/api/import/docx?name=basic.docx`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    body: docxFixture,
+  });
+  const docxBody = (await docxRes.json()) as {
+    markdown?: string;
+    title?: string;
+    stats?: { tables?: number; headings?: number; listItems?: number };
+    warnings?: unknown[];
+  };
+  check('POST /api/import/docx 有效文档 → 200', docxRes.status === 200, docxRes.status);
+  check('docx 转换含标题与表格', (docxBody.markdown ?? '').includes('# DocMax 导入测试') && docxBody.stats?.tables === 1, docxBody.stats);
+  check('docx 统计信息（标题/列表项）', docxBody.stats?.headings === 4 && docxBody.stats?.listItems === 4, docxBody.stats);
+  check('docx 标题回退', docxBody.title === 'DocMax 导入测试', docxBody.title);
+
+  const invalidDocx = await fetch(`${BASE}/api/import/docx?name=bad.docx`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: Buffer.from('not a zip'),
+  });
+  const invalidBody = (await invalidDocx.json()) as { code?: string; error?: string };
+  check('非 docx → 400 not-docx', invalidDocx.status === 400 && invalidBody.code === 'not-docx', invalidBody);
+
+  const emptyDocx = await fetch(`${BASE}/api/import/docx?name=empty.docx`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    body: Buffer.alloc(0),
+  });
+  const emptyBody = (await emptyDocx.json()) as { code?: string };
+  check('空文件 → 400 missing-file', emptyDocx.status === 400 && emptyBody.code === 'missing-file', emptyBody);
+
+  const wrongType = await fetch(`${BASE}/api/import/docx`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'x.docx' }),
+  });
+  const wrongTypeBody = (await wrongType.json()) as { code?: string };
+  check('JSON 请求体 → 400 missing-file', wrongType.status === 400 && wrongTypeBody.code === 'missing-file', wrongTypeBody);
 
   console.log(failures === 0 ? '\n✅ API 自检全部通过' : `\n❌ ${failures} 项失败`);
   process.exitCode = failures ? 1 : 0;

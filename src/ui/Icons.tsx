@@ -112,3 +112,14 @@ export function IconBraces(props: IconProps) {
     </Icon>
   );
 }
+
+/** 导入 Word 文档：文档 + 向下箭头 */
+export function IconWord(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 3.5h8L18.5 8v12.5h-13z" />
+      <path d="M14 3.5V8h4.5" />
+      <path d="M9 12.5l1.4 4 1.6-2.6 1.6 2.6 1.4-4" />
+    </Icon>
+  );
+}

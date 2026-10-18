@@ -2470,3 +2470,212 @@ button {
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ==========================================================================
+   DOCX 导入浮层
+   ========================================================================== */
+
+.docx-card {
+  width: min(680px, 100%);
+  max-height: min(86vh, 780px);
+  overflow: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  border-top: 2px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: var(--shadow-lift);
+  padding: 18px 22px 20px;
+}
+
+.docx-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.docx-head h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.docx-file {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.docx-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.docx-loading {
+  align-items: center;
+  padding: 36px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.docx-loading p {
+  margin: 0;
+}
+
+.docx-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--rule-strong);
+  border-top-color: var(--accent);
+  animation: docx-spin 0.9s linear infinite;
+}
+
+@keyframes docx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.docx-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.docx-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.docx-hint code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.docx-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  padding: 10px 12px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.docx-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.docx-stat em {
+  font-style: normal;
+}
+
+.docx-stat strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--font-serif);
+}
+
+.docx-size {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+.docx-warnings {
+  margin: 0;
+  padding: 10px 12px 10px 30px;
+  background: var(--warn-soft);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--warn);
+  border-radius: 2px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.docx-warnings li + li {
+  margin-top: 4px;
+}
+
+.docx-preview-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.docx-preview {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px 14px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.docx-warning-replace {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.docx-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .docx-card {
+    padding: 16px 16px 18px;
+    max-height: 92vh;
+  }
+
+  .docx-preview {
+    max-height: 200px;
+  }
+
+  .docx-size {
+    margin-left: 0;
+    width: 100%;
+  }
+}

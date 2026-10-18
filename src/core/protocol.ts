@@ -33,6 +33,8 @@ export interface PublicConfig {
     maxContextChars: number;
     defaultContextChars: number;
     defaultMaxRewriteChars: number;
+    /** docx 导入文件大小上限（字节） */
+    maxDocxBytes: number;
   };
   version: string;
 }
@@ -65,6 +67,7 @@ export const DEFAULT_LIMITS: PublicConfig['limits'] = {
   maxContextChars: 4_000,
   defaultContextChars: 800,
   defaultMaxRewriteChars: 4_000,
+  maxDocxBytes: 25 * 1024 * 1024,
 };
 
 export function publicConfig(hasApiKey: boolean, defaultModel: ModelId = 'deepseek-flash'): PublicConfig {

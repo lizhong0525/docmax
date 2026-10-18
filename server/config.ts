@@ -47,6 +47,8 @@ export const config = {
   requestTimeoutMs: Number(process.env.DOCMAX_TIMEOUT_MS || 180_000),
   /** 上游首个字节超时 */
   connectTimeoutMs: Number(process.env.DOCMAX_CONNECT_TIMEOUT_MS || 30_000),
+  /** docx 导入大小上限 */
+  docxMaxBytes: Number(process.env.DOCMAX_MAX_DOCX_BYTES || 25 * 1024 * 1024),
   maxRepairs: 1,
   limits: {
     ...DEFAULT_LIMITS,

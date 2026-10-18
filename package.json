@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx scripts/eval.ts",
+    "docx2md": "tsx scripts/docx2md.ts",
     "e2e": "playwright test"
   },
   "dependencies": {
@@ -28,9 +29,12 @@
     "diff": "9.0.0",
     "dompurify": "3.4.17",
     "express": "5.3.0",
+    "mammoth": "1.13.0",
     "marked": "18.1.1",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "turndown": "7.2.4",
+    "turndown-plugin-gfm": "1.0.2"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
@@ -38,6 +42,7 @@
     "@types/node": "24.10.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/turndown": "5.0.6",
     "@vitejs/plugin-react": "6.1.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",

@@ -194,4 +194,5 @@ node node_modules/typescript/bin/tsc -p tsconfig.server.json --noEmit
   - Playwright E2E：**7/7 passed**（13.3s，真实 DeepSeek）
   - 生产构建：`vite build` 成功，`pnpm start` 生产模式页面与 API 冒烟通过
 - 报告定稿后的唯一产品修正：单独的表格分隔行 `blockKind` → `table`（见第六节第 1 条）。
+- 报告定稿后新增功能「DOCX → Markdown 导入」：新增 15 个转换器单测（总单测 251）、4 个 docx E2E（总 E2E 11）、API 自检 7 项；实现与设计见 [README](../README.md#从-word-导入docx--markdown) 与 [DESIGN](../DESIGN.md#7-docx--markdown-导入)。
 

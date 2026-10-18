@@ -23,7 +23,9 @@ import { ReviewPanel } from './ui/ReviewPanel';
 import { MarkdownPreview } from './ui/Preview';
 import { HelpOverlay } from './ui/HelpOverlay';
 import { useEditSession, type SessionContext } from './ui/useEditSession';
-import { IconClose, IconEdit, IconFolder, IconHelp, IconMoon, IconPreview, IconSave, IconSun } from './ui/Icons';
+import { IconClose, IconEdit, IconFolder, IconHelp, IconMoon, IconPreview, IconSave, IconSun, IconWord } from './ui/Icons';
+import { DocxImportDialog, type DocxImportState } from './ui/DocxImportDialog';
+import { importDocx, pickDocxFile } from './ui/docxImport';
 import type {
   DraftContext,
   DraftRange,
@@ -83,6 +85,7 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const [health, setHealth] = useState<HealthState>('checking');
+  const [docxImport, setDocxImport] = useState<DocxImportState | null>(null);
   const [confirmAccept, setConfirmAccept] = useState(false);
   const [staleOverride, setStaleOverride] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<{ model: ModelId; thinking: ThinkingLevel; modeChoice: ModeChoice }>(() => {
@@ -100,6 +103,7 @@ export function App() {
   const titleRef = useRef(initial.title);
   const lastParamsRef = useRef<RunParams | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const docxFileRef = useRef<File | null>(null);
   const session = useEditSession();
   const sessionState = session.state;
 
@@ -380,6 +384,80 @@ export function App() {
     }
   };
 
+  /* ----------------------------- Word 导入 ------------------------------ */
+
+  const runDocxImport = async (file: File): Promise<void> => {
+    docxFileRef.current = file;
+    setDocxImport({ phase: 'converting', fileName: file.name, result: null, error: null });
+    try {
+      const result = await importDocx(file);
+      setDocxImport({ phase: 'ready', fileName: file.name, result, error: null });
+    } catch (error) {
+      setDocxImport({
+        phase: 'error',
+        fileName: file.name,
+        result: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const importWordFile = async (): Promise<void> => {
+    if (sessionState.status === 'running') {
+      showToast('正在生成，请稍候或按 Esc 中止');
+      return;
+    }
+    try {
+      const file = await pickDocxFile();
+      if (!file) return;
+      if (file.size > DEFAULT_LIMITS.maxDocxBytes) {
+        setDocxImport({
+          phase: 'error',
+          fileName: file.name,
+          result: null,
+          error: `文件超过大小上限（${Math.round(DEFAULT_LIMITS.maxDocxBytes / 1024 / 1024)} MB）。`,
+        });
+        return;
+      }
+      await runDocxImport(file);
+    } catch (error) {
+      showToast(`选择文件失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const cancelDocxImport = (): void => {
+    setDocxImport(null);
+    docxFileRef.current = null;
+    editorRef.current?.focus();
+  };
+
+  const retryDocxImport = (): void => {
+    const file = docxFileRef.current;
+    if (file) void runDocxImport(file);
+  };
+
+  const confirmDocxImport = (): void => {
+    const state = docxImport;
+    if (!state?.result) return;
+    const text = state.result.markdown;
+    const nextTitle = state.result.title || state.fileName.replace(/\.docx$/i, '') || '导入的文档';
+    docRef.current = text;
+    docRevRef.current += 1;
+    titleRef.current = nextTitle;
+    setTitle(nextTitle);
+    setStableDoc(text);
+    setDocEpoch((epoch) => epoch + 1);
+    setFileHandle(null);
+    setFileName(null);
+    setPaneMode('edit');
+    setSelection(null);
+    session.reset();
+    editorRef.current?.resetDoc(text, 0);
+    setDocxImport(null);
+    docxFileRef.current = null;
+    showToast(`已导入 Word 文档（${state.result.stats.chars} 字），可按 Ctrl/⌘ S 另存为 .md`);
+  };
+
   const togglePreview = () => {
     setPaneMode((current) => {
       const next: PaneMode = current === 'edit' ? 'preview' : 'edit';
@@ -436,6 +514,11 @@ export function App() {
     }
 
     if (event.key === 'Escape') {
+      if (docxImport) {
+        event.preventDefault();
+        cancelDocxImport();
+        return;
+      }
       if (helpOpen) {
         event.preventDefault();
         setHelpOpen(false);
@@ -563,6 +646,17 @@ export function App() {
           <button type="button" className="tool-btn" onClick={openFile} aria-label="打开 Markdown 文件" title="打开 · Ctrl+O">
             <IconFolder />
             <span className="tool-label">打开</span>
+          </button>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => void importWordFile()}
+            aria-label="导入 Word 文档（.docx 转 Markdown）"
+            title="导入 Word 文档（.docx → Markdown，图片占位）"
+            data-testid="import-docx"
+          >
+            <IconWord />
+            <span className="tool-label">导入 Word</span>
           </button>
           <button type="button" className="tool-btn" onClick={() => void saveFile(false)} aria-label="保存文档" title="保存 · Ctrl+S">
             <IconSave />
@@ -745,6 +839,17 @@ export function App() {
       />
 
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} isMac={isMac} />
+
+      {docxImport ? (
+        <DocxImportDialog
+          state={docxImport}
+          maxBytes={DEFAULT_LIMITS.maxDocxBytes}
+          hasExistingDoc={stableDoc.trim().length > 0}
+          onCancel={cancelDocxImport}
+          onConfirm={confirmDocxImport}
+          onRetry={retryDocxImport}
+        />
+      ) : null}
 
       {toast ? (
         <div className="toast" role="status" aria-live="polite" data-testid="toast" key={toast.id}>

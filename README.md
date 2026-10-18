@@ -54,6 +54,36 @@ pnpm build
 pnpm start                  # 服务 dist/ + API，同样一个端口
 ```
 
+## 从 Word 导入（docx → Markdown）
+
+Word 文档不想手动重排？点顶栏 **「导入 Word」**，选择 `.docx`，DocMax 会先在本地转换：
+
+- **标题 / 段落 / 粗体 / 斜体 / 列表 / 表格 / 链接 / 引用 / 代码块**按 Word 样式语义转换为标准 Markdown；
+- **图片不导出**：转换为可读占位符 `> [图片占位 N：image/png，未导出图片文件]`（避免 base64 让 md 体积爆炸），转换前可预览；
+- 转换完成后先展示摘要与 Markdown 预览，确认后**替换当前文档**（请先保存用不到的旧内容），再按 `Ctrl/⌘ S` 保存为 `.md`；
+- 文件大小上限默认 25 MB，可用 `DOCMAX_MAX_DOCX_BYTES` 调整。
+
+同样的转换能力也可以脱离界面直接用命令行：
+
+```bash
+# 输出到 stdout
+pnpm docx2md 文档.docx
+# 写入文件
+pnpm docx2md 文档.docx -o 文档.md
+# 输出 JSON（含统计与警告）
+pnpm docx2md 文档.docx --json
+```
+
+或者作为本地 HTTP API：
+
+```bash
+curl -X POST "http://127.0.0.1:5199/api/import/docx?name=a.docx" \
+  -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+  --data-binary @a.docx
+```
+
+已知限制：Word 里纯手工排版的“伪标题”（未使用标题样式）会按普通段落处理；合并单元格会被展平；页眉页脚、批注、修订痕迹不导出；表格表头仅在 Word 标记了“标题行重复”时识别，否则生成空表头以保留全部数据行。
+
 ## 使用
 
 - 选中任意文字 → 出现「✦ AI 修改」浮标，或按 `Ctrl/⌘ K`
@@ -72,6 +102,7 @@ pnpm start                  # 服务 dist/ + API，同样一个端口
 | `pnpm typecheck` | 前端 + 服务端 TypeScript 检查 |
 | `pnpm test` | vitest 单元测试（核心解析/匹配/校验/选区） |
 | `pnpm eval` | 真实 DeepSeek 端到端评测（需服务已启动），报告输出到 `.research/eval-report.md` |
+| `pnpm docx2md` | 命令行 docx → Markdown 转换（不经过模型） |
 | `pnpm e2e` | Playwright 浏览器端到端测试（需服务已启动） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke.ts` | 端到端冒烟（rewrite） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke-modes.ts` | 端到端冒烟（surgical / insert / ask / no-op） |
@@ -92,11 +123,12 @@ src/core/          前后端共享的纯 TS 核心
 server/            Node/Express 服务（唯一持有 API Key 的进程）
   deepseek.ts      DeepSeek 流式客户端 + 错误映射
   editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
+  docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
   index.ts         单进程：API + Vite middleware / dist 静态文件
-src/ui/            React + CodeMirror 6 界面
-tests/             vitest 单元测试
-e2e/               Playwright 测试
-scripts/           冒烟与评测脚本
+src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+tests/             vitest 单元测试（含 docx 转换与测试夹具）
+e2e/               Playwright 测试（AI 编辑 + docx 导入）
+scripts/           冒烟、评测、API 自检、docx2md CLI
 ```
 
 ## 安全与隐私
@@ -110,17 +142,17 @@ scripts/           冒烟与评测脚本
 
 | 项目 | 结果 |
 | --- | --- |
-| 核心单元测试 | **236 / 236 通过**（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE） |
+| 核心单元测试 | **251 / 251 通过**（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换） |
 | 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
 | 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
 | 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
 | 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
-| E2E（真实 Chrome + 真实 DeepSeek） | **7 / 7 通过**：接受 → 文本变化 → Ctrl+Z 精确恢复；拒绝 → 不变；空选区插入；预览；窄屏 |
+| E2E（真实 Chrome + 真实 DeepSeek） | **11 / 11 通过**：AI 修改的接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
 完整数据与可复跑命令见 [`.research/eval-report.md`](.research/eval-report.md)、[`.research/verification-report.md`](.research/verification-report.md)、[`docs/ui-verification.md`](docs/ui-verification.md)。
 
-关键截图：[初始界面](docs/screenshots/01-initial.png) · [选区识别 + 指令条](docs/screenshots/02-command-payload.png) · [审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) · [深色模式](docs/screenshots/04-dark.png) · [窄屏](docs/screenshots/05-narrow-command.png) · [空文档](docs/screenshots/06-empty-document.png)
+关键截图：[初始界面](docs/screenshots/01-initial.png) · [选区识别 + 指令条](docs/screenshots/02-command-payload.png) · [审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) · [深色模式](docs/screenshots/04-dark.png) · [窄屏](docs/screenshots/05-narrow-command.png) · [空文档](docs/screenshots/06-empty-document.png) · [Word 导入](#从-word-导入docx--markdown)（[对话框](docs/screenshots/07-docx-import.png) / [图片占位](docs/screenshots/08-docx-images-placeholder.png)）
 
 ```powershell
 # 单元测试

@@ -32,6 +32,7 @@ const GROUPS: Array<{ title: string; items: Array<{ keys: string[]; label: strin
     title: '文件与视图',
     items: [
       { keys: ['Mod', 'O'], label: '打开 Markdown 文件' },
+      { keys: [], label: '导入 Word（.docx → Markdown，工具栏按钮）' },
       { keys: ['Mod', 'S'], label: '保存' },
       { keys: ['Mod', 'Shift', 'S'], label: '另存为' },
       { keys: ['Mod', 'P'], label: '切换预览' },
