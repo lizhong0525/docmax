@@ -118,7 +118,9 @@ scripts/           冒烟与评测脚本
 | E2E（真实 Chrome + 真实 DeepSeek） | **7 / 7 通过**：接受 → 文本变化 → Ctrl+Z 精确恢复；拒绝 → 不变；空选区插入；预览；窄屏 |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
-完整数据与可复跑命令见 [`.research/eval-report.md`](.research/eval-report.md)、[`.research/verification-report.md`](.research/verification-report.md)、[`.artifacts/ui-verification.md`](.artifacts/ui-verification.md)。
+完整数据与可复跑命令见 [`.research/eval-report.md`](.research/eval-report.md)、[`.research/verification-report.md`](.research/verification-report.md)、[`docs/ui-verification.md`](docs/ui-verification.md)。
+
+关键截图：[初始界面](docs/screenshots/01-initial.png) · [选区识别 + 指令条](docs/screenshots/02-command-payload.png) · [审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) · [深色模式](docs/screenshots/04-dark.png) · [窄屏](docs/screenshots/05-narrow-command.png) · [空文档](docs/screenshots/06-empty-document.png)
 
 ```powershell
 # 单元测试
