@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.DS_Store
+*.log
+.playwright/
+test-results/
+e2e/.artifacts/
+.probe/
+.dev/
+.artifacts/
+playwright-report/
+
