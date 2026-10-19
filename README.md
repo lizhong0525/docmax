@@ -93,6 +93,23 @@ pnpm build
 pnpm start                   # 一个进程同时服务 dist/ 与 API
 ```
 
+### 桌面快速启动（Windows）
+
+不想每次敲命令？一次性创建桌面快捷方式：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\create-desktop-shortcut.ps1
+```
+
+之后双击桌面上的 **DocMax** 即可：
+
+- 本地服务已在运行 → 直接打开 <http://127.0.0.1:5199>
+- 未运行 → 后台启动（优先使用已构建的 `dist/`，缺失时退回开发模式），就绪后自动打开浏览器
+- 全程无控制台窗口；服务日志在 `.dev/server.log`
+- 停止服务：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop-docmax.ps1`
+
+说明：快捷方式指向 `scripts/launch-docmax.vbs`（隐藏窗口启动 `scripts/start-docmax.ps1`），图标为 `assets/docmax.ico`（可用 `python scripts/make-icon.py` 重新生成）。移动项目目录后重新运行一次创建脚本即可。开发时若需要热更新请直接用 `pnpm dev`；快捷方式使用生产构建，代码更新后记得 `pnpm build`。
+
 > 没有 API Key 也能打开编辑器、写 Markdown、导入 Word；AI 修改会提示配置 Key。
 
 ## 使用
@@ -242,7 +259,8 @@ server/            Node/Express 服务（唯一持有 API Key 的进程）
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
-scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成
+scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
+assets/            桌面快捷方式图标（docmax.ico）
 docs/             HTML 项目主页与截图
 ```
 

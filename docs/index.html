@@ -331,6 +331,18 @@ DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字�
 <pre><code class="language-bash">pnpm build
 pnpm start                   # 一个进程同时服务 dist/ 与 API
 </code></pre>
+<h3 id="桌面快速启动windows">桌面快速启动（Windows）</h3>
+<p>不想每次敲命令？一次性创建桌面快捷方式：</p>
+<pre><code class="language-powershell">powershell -NoProfile -ExecutionPolicy Bypass -File scripts\create-desktop-shortcut.ps1
+</code></pre>
+<p>之后双击桌面上的 <strong>DocMax</strong> 即可：</p>
+<ul>
+<li>本地服务已在运行 → 直接打开 <a href="http://127.0.0.1:5199">http://127.0.0.1:5199</a></li>
+<li>未运行 → 后台启动（优先使用已构建的 <code>dist/</code>，缺失时退回开发模式），就绪后自动打开浏览器</li>
+<li>全程无控制台窗口；服务日志在 <code>.dev/server.log</code></li>
+<li>停止服务：<code>powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop-docmax.ps1</code></li>
+</ul>
+<p>说明：快捷方式指向 <code>scripts/launch-docmax.vbs</code>（隐藏窗口启动 <code>scripts/start-docmax.ps1</code>），图标为 <code>assets/docmax.ico</code>（可用 <code>python scripts/make-icon.py</code> 重新生成）。移动项目目录后重新运行一次创建脚本即可。开发时若需要热更新请直接用 <code>pnpm dev</code>；快捷方式使用生产构建，代码更新后记得 <code>pnpm build</code>。</p>
 <blockquote>
 <p>没有 API Key 也能打开编辑器、写 Markdown、导入 Word；AI 修改会提示配置 Key。</p>
 </blockquote>
@@ -569,7 +581,8 @@ server/            Node/Express 服务（唯一持有 API Key 的进程）
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
-scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成
+scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
+assets/            桌面快捷方式图标（docmax.ico）
 docs/             HTML 项目主页与截图
 </code></pre>
 <h2 id="安全与隐私">安全与隐私</h2>
@@ -602,7 +615,7 @@ docs/             HTML 项目主页与截图
       <a href="https://github.com/lizhong0525/docmax">GitHub 仓库</a>
       <a href="https://github.com/lizhong0525/docmax/issues">问题反馈</a>
       <a href="https://lizhong0525.github.io/docmax/">GitHub Pages</a>
-      <span class="generated">由 README.md 自动生成 · 2026-10-18</span>
+      <span class="generated">由 README.md 自动生成 · 2026-10-19</span>
     </div>
   </footer>
 </body>
