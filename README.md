@@ -120,6 +120,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 
 产物：`installer\dist\DocMax-Setup.exe`（约 **23 MB**，内置 Node 运行时，无需另装 Node 或依赖）。
 
+已构建版本可从 [GitHub Releases](https://github.com/lizhong0525/docmax/releases/latest) 下载（`DocMax-Setup.exe`）。
+
 安装包行为：
 
 - 按当前用户安装到 `%LOCALAPPDATA%\DocMax`，**无需管理员权限**；
