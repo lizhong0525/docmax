@@ -110,6 +110,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\create-desktop-short
 
 说明：快捷方式指向 `scripts/launch-docmax.vbs`（隐藏窗口启动 `scripts/start-docmax.ps1`），图标为 `assets/docmax.ico`（可用 `python scripts/make-icon.py` 重新生成）。移动项目目录后重新运行一次创建脚本即可。开发时若需要热更新请直接用 `pnpm dev`；快捷方式使用生产构建，代码更新后记得 `pnpm build`。
 
+### Windows 安装包（自包含）
+
+如果要分享给没有 Node.js 环境的人，直接构建安装包：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
+```
+
+产物：`installer\dist\DocMax-Setup.exe`（约 **23 MB**，内置 Node 运行时，无需另装 Node 或依赖）。
+
+安装包行为：
+
+- 按当前用户安装到 `%LOCALAPPDATA%\DocMax`，**无需管理员权限**；
+- 安装界面可填写 DeepSeek API Key（留空也能稍后在安装目录的 `.env` 中配置）；
+- 创建桌面 / 开始菜单快捷方式（无控制台窗口启动）；
+- 检测到 Word 时自动安装 Word 加载项（重启 Word 后出现 DocMax 选项卡）；
+- 在 Windows「设置 → 应用」中提供标准卸载；卸载时会把 `.env` 备份到 `%USERPROFILE%\DocMax.env.bak`。
+
+说明：安装包未做代码签名，Windows SmartScreen 可能提示，选择「更多信息 → 仍要运行」即可；安装包内为生产构建，代码更新后重新运行构建脚本生成新包。
+
 > 没有 API Key 也能打开编辑器、写 Markdown、导入 Word；AI 修改会提示配置 Key。
 
 ## 使用
@@ -258,6 +278,7 @@ node node_modules/@playwright/test/cli.js test
 | `pnpm word:build` | 仅构建 Word 加载项（`word-addin/build/DocMax.dotm`） |
 | `pnpm word:test` | 用隐藏 Word 实例运行加载项自检（API + 文档内选区替换） |
 | `pnpm word:uninstall` | 卸载 Word 加载项 |
+| `pnpm installer:build` | 构建 Windows 安装包（`installer/dist/DocMax-Setup.exe`） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke.ts` | 端到端冒烟（rewrite） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke-modes.ts` | 端到端冒烟（surgical / insert / ask / no-op） |
 
@@ -293,6 +314,7 @@ server/            Node/Express 服务（唯一持有 API Key 的进程）
   index.ts         单进程：API + Vite middleware / dist 静态文件
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
 word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
+installer/         Windows 安装包（NSIS 脚本、自包含运行时构建、启动器）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
 scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本

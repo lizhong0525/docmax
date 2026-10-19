@@ -1,7 +1,7 @@
 {
   "name": "docmax",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DocMax — 极简 Markdown 编辑器，深度集成 DeepSeek 的选区识别与精准替换",
   "type": "module",
   "engines": {
@@ -21,6 +21,7 @@
     "word:install": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/install.ps1",
     "word:test": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/test.ps1",
     "word:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/uninstall.ps1",
+    "installer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1",
     "e2e": "playwright test"
   },
   "dependencies": {
@@ -49,6 +50,7 @@
     "@types/react-dom": "19.3.0",
     "@types/turndown": "5.0.6",
     "@vitejs/plugin-react": "6.1.2",
+    "esbuild": "^0.28.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "8.3.4",

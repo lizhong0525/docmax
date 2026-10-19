@@ -12,7 +12,7 @@ Option Explicit
 '  {{DOCMAX_ROOT}} 会在构建时被替换为本机项目目录。
 ' ============================================================================
 
-Private Const ADDIN_VERSION As String = "0.1.0"
+Private Const ADDIN_VERSION As String = "0.2.0"
 Private Const DOCMAX_ROOT As String = "{{DOCMAX_ROOT}}"
 Private Const API_BASE As String = "http://127.0.0.1:5199"
 Private Const API_EDIT As String = API_BASE & "/api/word/edit"

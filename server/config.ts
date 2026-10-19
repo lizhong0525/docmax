@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 import type { ModelId, ThinkingLevel } from '../src/core/types';
 import { APP_VERSION, DEFAULT_LIMITS } from '../src/core/protocol';
 
-export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 安装版（打包后）由启动器设置 DOCMAX_ROOT 指向安装目录；源码运行时退回项目根目录。
+export const PROJECT_ROOT = process.env.DOCMAX_ROOT
+  ? resolve(process.env.DOCMAX_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 极简 .env 解析（不引入 dotenv 依赖） */
 function loadDotEnv(): void {

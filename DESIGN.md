@@ -303,7 +303,64 @@ Word 功能区「DocMax」选项卡（customUI.xml）
 
 仅 Windows 桌面版 Word；依赖宏信任设置（STARTUP 模板通常自动加载，异常时需检查信任中心）；Ribbon 按钮文本为中文；不处理 Word Online；超长选区（>20 万字符）拒绝；预览确认框最多展示 900 字符（完整结果仍会应用）。
 
-## 9. 已知限制与后续方向
+## 9. Windows 安装包
+
+目标：给没有 Node.js 环境的 Windows 用户一个「下一步下一步就装好」的安装包，包含 Web 编辑器、本地服务与 Word 加载项。
+
+### 9.1 方案选型
+
+| 方案 | 结论 |
+| --- | --- |
+| 绿色 ZIP + install.ps1 | 简单，但需要用户解压/右键运行脚本，体验不像安装包 |
+| IExpress（Windows 自带 SFX） | 无需外部工具，但可定制性差、SED 构建在当前环境失败、无标准卸载器 |
+| **NSIS 3（MUI2）** | ✅ 标准 Windows 安装器：安装向导、开始菜单/桌面快捷方式、注册卸载信息、原生 uninstaller；`RequestExecutionLevel user` 可无管理员安装 |
+| Electron/Tauri 重写外壳 | ❌ 现有架构就是本地 Web 服务，没必要整体重写 |
+
+NSIS 便携版由构建脚本在首次构建时下载到 `installer/tools`（不提交仓库），后续离线可用。安装器用 `SetCompressor /SOLID lzma` 压缩内置的 Node 运行时，最终约 23 MB。
+
+### 9.2 自包含运行时
+
+```
+installer/staging/
+  node.exe            复制自本机 Node（含 NODE-LICENSE.txt）
+  server.mjs          esbuild 打包 server/index.ts（ESM 单文件，external: vite）
+  dist/               Vite 生产构建（前端静态资源）
+  word-addin/DocMax.dotm
+  launch-docmax.vbs   隐藏启动本地服务并打开浏览器
+  stop-docmax.ps1     卸载/升级前停止本地服务
+  assets/docmax.ico  快捷方式与安装器图标
+  README.txt
+```
+
+关键点：
+
+- **不打包 node_modules**：esbuild 把服务端及其依赖打成一个 `server.mjs`（约 2.7 MB）；CJS 依赖在 ESM 产物中需要 `createRequire`，构建时注入 banner 解决 `Dynamic require of "tty"` 问题。
+- **Node 运行时**直接随包分发（约 93 MB，LZMA 压缩后安装包 23 MB），安装后无需用户安装 Node。
+- **根目录定位**：安装版由启动器设置 `DOCMAX_ROOT=安装目录`，`server/config.ts` 优先读取该环境变量；源码模式仍退回项目根目录。
+- **启动器**（VBS）先检查 `/api/health`：服务已在运行则直接开浏览器；否则隐藏启动 `node.exe server.mjs --prod` 并轮询就绪，最多 60s，失败弹窗并给出日志路径。
+
+### 9.3 安装器行为
+
+- 按用户安装到 `%LOCALAPPDATA%\DocMax`，`RequestExecutionLevel user`（无 UAC）；
+- 自定义向导页输入 DeepSeek API Key（可留空），写入安装目录 `.env`；升级安装检测到已有 `.env` 时保留原配置；
+- 桌面 + 开始菜单快捷方式（VBS 启动，无控制台窗口）；
+- 检测 Word（注册表 App Paths）后把 `DocMax.dotm` 复制到 Word STARTUP；
+- 写 `HKCU\...\Uninstall\DocMax`，支持「设置 → 应用」标准卸载；QuietUninstallString 支持静默卸载；
+- 卸载器：先经 `stop-docmax.ps1` 停止本地服务 → 备份 `.env` 到 `%USERPROFILE%\DocMax.env.bak` → 删除快捷方式、Word 加载项、注册表与安装目录。
+- 自动化测试开关：`DOCMAX_INSTALL_TEST=1`（不写快捷方式/Word/注册表）、`DOCMAX_API_KEY`（免交互填 Key）、`/D=<dir>` 覆盖安装目录。
+
+### 9.4 验证
+
+- staging 内 `node.exe server.mjs --prod` 冒烟：健康检查、首页 200、`/api/word/edit` 真实 DeepSeek 调用通过；
+- 静默测试安装到临时目录：文件/`.env`/卸载器齐全 → 安装版应用启动并完成真实 AI 请求 → `uninstall.exe /S` 完全删除目录；
+- 正式安装到 `%LOCALAPPDATA%\DocMax`：快捷方式、注册表卸载项、Word 加载项均就位；通过安装版启动器启动，健康检查显示 `version=0.2.0`、`mode=production`，页面 200；
+- 安装版 Word 加载项自检（API + 隐藏文档选区替换）通过。
+
+### 9.5 限制
+
+仅 Windows x64；未代码签名（SmartScreen 可能提示）；安装包版本需与项目源码同步（`installer:build` 自动读取 `package.json` 版本）；对已有旧安装升级时会停止旧服务再覆盖安装。
+
+## 10. 已知限制与后续方向
 
 - 多选区目前串行逐区处理（v1：主选区优先），并行 + 合并为一个事务是可做的下一步；
 - surgical 模式对「同一短句在选区内重复」仍可能触发一次修复重试（已有 FIND_ALL 支持，长重复文本一次通过率待评测数据）；

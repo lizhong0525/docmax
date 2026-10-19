@@ -13,4 +13,7 @@ playwright-report/
 
 .vitest/
 word-addin/build/
+installer/staging/
+installer/dist/
+installer/tools/
 
