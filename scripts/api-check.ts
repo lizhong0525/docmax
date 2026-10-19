@@ -184,6 +184,63 @@ async function main(): Promise<void> {
   const wrongTypeBody = (await wrongType.json()) as { code?: string };
   check('JSON 请求体 → 400 missing-file', wrongType.status === 400 && wrongTypeBody.code === 'missing-file', wrongTypeBody);
 
+  console.log('\n[6] Word 插件接口 /api/word/edit');
+  const wordBase = {
+    instruction: '润色这句话，使其更简洁专业，保持原意。',
+    mode: 'rewrite',
+    selection: {
+      text: '这个功能目前有一个问题，就是当用户点击按钮以后页面会一直卡住不动，我们需要尽快修复它。',
+      before: '## 已知问题\n\n',
+      after: '\n\n## 下一步',
+    },
+    docTitle: '测试.docx',
+  };
+  const wordRes = await fetch(`${BASE}/api/word/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(wordBase),
+  });
+  const wordBody = (await wordRes.json()) as {
+    ok?: boolean;
+    newText?: string;
+    warningCount?: number;
+    hasErrorWarning?: boolean;
+    analysisSummary?: string;
+    latencyMs?: number;
+    error?: string;
+  };
+  check('POST /api/word/edit 有效请求 → ok', wordRes.status === 200 && wordBody.ok === true, wordBody);
+  check(
+    'Word 接口返回可用替换文本',
+    typeof wordBody.newText === 'string' && wordBody.newText.length > 10 && wordBody.newText !== wordBase.selection.text,
+    wordBody.newText,
+  );
+  check('Word 接口返回识别摘要与延迟', typeof wordBody.analysisSummary === 'string' && (wordBody.latencyMs ?? 0) > 0, wordBody);
+
+  const wordEmptySelection = await fetch(`${BASE}/api/word/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...wordBase, selection: { text: '   ' } }),
+  });
+  const wordEmptySelectionBody = (await wordEmptySelection.json()) as { ok?: boolean; code?: string };
+  check(
+    'Word 空选区 → ok=false empty-selection',
+    wordEmptySelection.status === 200 && wordEmptySelectionBody.ok === false && wordEmptySelectionBody.code === 'empty-selection',
+    wordEmptySelectionBody,
+  );
+
+  const wordEmptyInstruction = await fetch(`${BASE}/api/word/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...wordBase, instruction: '   ' }),
+  });
+  const wordEmptyInstructionBody = (await wordEmptyInstruction.json()) as { ok?: boolean; code?: string };
+  check(
+    'Word 空指令 → ok=false empty-instruction',
+    wordEmptyInstruction.status === 200 && wordEmptyInstructionBody.ok === false && wordEmptyInstructionBody.code === 'empty-instruction',
+    wordEmptyInstructionBody,
+  );
+
   console.log(failures === 0 ? '\n✅ API 自检全部通过' : `\n❌ ${failures} 项失败`);
   process.exitCode = failures ? 1 : 0;
 }

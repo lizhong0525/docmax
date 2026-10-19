@@ -166,6 +166,35 @@ curl -X POST "http://127.0.0.1:5199/api/import/docx?name=a.docx" \
 
 已知限制：Word 里纯手工排版的“伪标题”（未使用标题样式）会按普通段落处理；合并单元格会被展平；页眉页脚、批注、修订痕迹不导出；表格表头仅在 Word 标记了“标题行重复”时识别，否则生成空表头以保留全部数据行。
 
+## Word 插件（在 Word 里直接改字）
+
+不用复制粘贴：安装一个 Word 加载项后，在 Word 里选中文字即可让 DocMax 改写。安装无需管理员权限：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\install.ps1
+```
+
+安装后**重启 Word**，功能区会出现「DocMax」选项卡：
+
+| 按钮 | 行为 |
+| --- | --- |
+| **AI 改写…** | 输入任意指令（润色 / 扩写 / 翻译 / 改成更正式…），预览后替换选区 |
+| **润色** | 一键润色选中文字（保持原意） |
+| **解释** | 只解释含义/结构/作用，不修改原文 |
+| **检查服务** / **打开 DocMax 编辑器** | 查看/启动本地服务，或打开完整 Markdown 编辑器 |
+
+行为与安全：
+
+- 修改结果先在确认框里预览，**确认后才替换选区**；应用后可 `Ctrl+Z` 撤销；
+- 只处理选中的范围（没选中会提示）；保留段落/单元格结束符，避免与下一段粘连；
+- 本地服务未启动时，插件会自动后台启动 DocMax（不需要你手动开终端）；
+- 文档内容只发送到本机 `127.0.0.1:5199`，再由本机服务转发 DeepSeek；插件本身没有外部网络访问；
+- 卸载：`powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\uninstall.ps1`（重启 Word 生效）。
+
+实现方式：Word VBA 模板加载项（`.dotm`，复制到 Word 的 `STARTUP` 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 `POST /api/word/edit`，该接口复用编辑器同一套「选区识别 → 提示词 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 [`word-addin`](word-addin)。
+
+限制：仅 Windows 桌面版 Word（Office 2016+ / Microsoft 365）；需要允许宏（STARTUP 模板通常自动加载；若功能区未出现，请检查 Word「选项 → 信任中心 → 宏设置」）；不支持 Word Online。
+
 ## 工程方法（简要）
 
 ```
@@ -198,7 +227,8 @@ Node 单进程（Express 5 + Vite middleware）
 | 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
 | 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
 | 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
-| E2E（真实 Chrome + 真实 DeepSeek） | **11 / 11 通过**：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
+| `E2E（真实 Chrome + 真实 DeepSeek）` | **11 / 11 通过**：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
+| Word 加载项 | 构建/安装成功；VBA 自检 + **隐藏 Word 文档中的选区替换**自检通过（真实 DeepSeek，0.7–1s） |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
 完整数据与可复跑命令见 [评测报告](.research/eval-report.md)、[验证报告](.research/verification-report.md)、[UI 验收报告](docs/ui-verification.md)。
@@ -224,6 +254,10 @@ node node_modules/@playwright/test/cli.js test
 | `pnpm docx2md` | 命令行 docx → Markdown 转换（不经过模型） |
 | `pnpm e2e` | Playwright 浏览器端到端测试（需服务已启动） |
 | `pnpm landing` | 由 README 生成 HTML 项目主页（`docs/index.html`） |
+| `pnpm word:install` | 构建并安装 Word 加载项（复制到 Word STARTUP，无需管理员） |
+| `pnpm word:build` | 仅构建 Word 加载项（`word-addin/build/DocMax.dotm`） |
+| `pnpm word:test` | 用隐藏 Word 实例运行加载项自检（API + 文档内选区替换） |
+| `pnpm word:uninstall` | 卸载 Word 加载项 |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke.ts` | 端到端冒烟（rewrite） |
 | `node node_modules/tsx/dist/cli.mjs scripts/smoke-modes.ts` | 端到端冒烟（surgical / insert / ask / no-op） |
 
@@ -254,9 +288,11 @@ src/core/          前后端共享的纯 TS 核心
 server/            Node/Express 服务（唯一持有 API Key 的进程）
   deepseek.ts      DeepSeek 流式客户端 + 错误映射
   editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
+  wordRoute.ts     /api/word/edit：Word 插件专用，一次性 JSON 返回
   docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
   index.ts         单进程：API + Vite middleware / dist 静态文件
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
 scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
@@ -270,7 +306,8 @@ docs/             HTML 项目主页与截图
 - 服务默认只监听 `127.0.0.1`；
 - 文档内容仅发送给 DeepSeek API，不经过其他第三方；
 - 文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；
-- Word 转换禁用外部文件访问，并过滤 `javascript:` / `data:` / `file:` 等危险链接。
+- Word 转换禁用外部文件访问，并过滤 `javascript:` / `data:` / `file:` 等危险链接；
+- Word 加载项只访问本机 `127.0.0.1`，源码在仓库内可审计，构建后安装到 STARTUP。
 
 ## 已知限制
 

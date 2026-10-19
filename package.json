@@ -17,6 +17,10 @@
     "eval": "tsx scripts/eval.ts",
     "docx2md": "tsx scripts/docx2md.ts",
     "landing": "tsx scripts/build-landing.ts",
+    "word:build": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/build.ps1",
+    "word:install": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/install.ps1",
+    "word:test": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/test.ps1",
+    "word:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File word-addin/uninstall.ps1",
     "e2e": "playwright test"
   },
   "dependencies": {

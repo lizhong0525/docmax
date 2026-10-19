@@ -7,6 +7,7 @@ import express from 'express';
 import { join } from 'node:path';
 import { config, hasApiKey, PROJECT_ROOT } from './config';
 import { handleEdit } from './editRoute';
+import { handleWordEdit } from './wordRoute';
 import { convertDocxToMarkdown, DocxConversionError } from './docx';
 import { publicConfig } from '../src/core/protocol';
 
@@ -31,6 +32,14 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/edit', (req, res) => {
   void handleEdit(req, res);
+});
+
+/**
+ * Word 插件专用：一次性 JSON 返回（VBA 无法消费 SSE）。
+ * 复用 /api/edit 的完整编辑流水线；详细契约见 server/wordRoute.ts。
+ */
+app.post('/api/word/edit', (req, res) => {
+  void handleWordEdit(req, res);
 });
 
 const DOCX_MIME = [

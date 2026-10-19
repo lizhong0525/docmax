@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
+  <ribbon>
+    <tabs>
+      <tab id="DocMaxTab" label="DocMax">
+        <group id="DocMaxEditGroup" label="AI 选区编辑">
+          <button id="DocMaxRewriteBtn" label="AI 改写…" size="large" onAction="DocMaxRewrite"
+                  screentip="用一句话告诉 DocMax 怎么改选中文字"
+                  supertip="先选中文字，再点击此按钮。修改结果会先预览，确认后才替换；应用后可按 Ctrl+Z 撤销。"/>
+          <button id="DocMaxPolishBtn" label="润色" size="large" onAction="DocMaxPolish"
+                  screentip="润色选中的文字"
+                  supertip="保持原意，让表达更简洁、专业、流畅。修改结果先预览再应用。"/>
+          <button id="DocMaxExplainBtn" label="解释" size="large" onAction="DocMaxExplain"
+                  screentip="让 DocMax 解释选中文字"
+                  supertip="只解释含义、结构与作用，不修改原文。"/>
+        </group>
+        <group id="DocMaxServiceGroup" label="服务">
+          <button id="DocMaxHealthBtn" label="检查服务" size="normal" onAction="DocMaxHealth"
+                  screentip="检查本机 DocMax 服务状态"
+                  supertip="检查 http://127.0.0.1:5199 是否在运行；未运行时可在这里启动。"/>
+          <button id="DocMaxOpenBtn" label="打开 DocMax 编辑器" size="normal" onAction="DocMaxOpenApp"
+                  screentip="在浏览器中打开 DocMax"
+                  supertip="打开 http://127.0.0.1:5199 的完整 Markdown 编辑器。"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

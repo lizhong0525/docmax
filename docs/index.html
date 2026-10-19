@@ -211,6 +211,7 @@
         <a href="#快速开始">快速开始</a>
         <a href="#使用">使用</a>
         <a href="#从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</a>
+        <a href="#word-插件在-word-里直接改字">Word 插件（在 Word 里直接改字）</a>
         <a href="#工程方法简要">工程方法（简要）</a>
         <a href="#验证结果">验证结果</a>
         <a href="#命令">命令</a>
@@ -422,6 +423,45 @@ pnpm docx2md 文档.docx --json
   --data-binary @a.docx
 </code></pre>
 <p>已知限制：Word 里纯手工排版的“伪标题”（未使用标题样式）会按普通段落处理；合并单元格会被展平；页眉页脚、批注、修订痕迹不导出；表格表头仅在 Word 标记了“标题行重复”时识别，否则生成空表头以保留全部数据行。</p>
+<h2 id="word-插件在-word-里直接改字">Word 插件（在 Word 里直接改字）</h2>
+<p>不用复制粘贴：安装一个 Word 加载项后，在 Word 里选中文字即可让 DocMax 改写。安装无需管理员权限：</p>
+<pre><code class="language-powershell">powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\install.ps1
+</code></pre>
+<p>安装后<strong>重启 Word</strong>，功能区会出现「DocMax」选项卡：</p>
+<table>
+<thead>
+<tr>
+<th>按钮</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>AI 改写…</strong></td>
+<td>输入任意指令（润色 / 扩写 / 翻译 / 改成更正式…），预览后替换选区</td>
+</tr>
+<tr>
+<td><strong>润色</strong></td>
+<td>一键润色选中文字（保持原意）</td>
+</tr>
+<tr>
+<td><strong>解释</strong></td>
+<td>只解释含义/结构/作用，不修改原文</td>
+</tr>
+<tr>
+<td><strong>检查服务</strong> / <strong>打开 DocMax 编辑器</strong></td>
+<td>查看/启动本地服务，或打开完整 Markdown 编辑器</td>
+</tr>
+</tbody></table>
+<p>行为与安全：</p>
+<ul>
+<li>修改结果先在确认框里预览，<strong>确认后才替换选区</strong>；应用后可 <code>Ctrl+Z</code> 撤销；</li>
+<li>只处理选中的范围（没选中会提示）；保留段落/单元格结束符，避免与下一段粘连；</li>
+<li>本地服务未启动时，插件会自动后台启动 DocMax（不需要你手动开终端）；</li>
+<li>文档内容只发送到本机 <code>127.0.0.1:5199</code>，再由本机服务转发 DeepSeek；插件本身没有外部网络访问；</li>
+<li>卸载：<code>powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\uninstall.ps1</code>（重启 Word 生效）。</li>
+</ul>
+<p>实现方式：Word VBA 模板加载项（<code>.dotm</code>，复制到 Word 的 <code>STARTUP</code> 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 <code>POST /api/word/edit</code>，该接口复用编辑器同一套「选区识别 → 提示词 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 <a href="word-addin"><code>word-addin</code></a>。</p>
+<p>限制：仅 Windows 桌面版 Word（Office 2016+ / Microsoft 365）；需要允许宏（STARTUP 模板通常自动加载；若功能区未出现，请检查 Word「选项 → 信任中心 → 宏设置」）；不支持 Word Online。</p>
 <h2 id="工程方法简要">工程方法（简要）</h2>
 <pre><code>浏览器（React 19 + CodeMirror 6）
    │  POST /api/edit（SSE，本地回环）
@@ -471,8 +511,12 @@ Node 单进程（Express 5 + Vite middleware）
 <td>30 次真实编辑共约 <strong>$0.0038</strong>（缓存命中时，约 $0.00013/次）</td>
 </tr>
 <tr>
-<td>E2E（真实 Chrome + 真实 DeepSeek）</td>
+<td><code>E2E（真实 Chrome + 真实 DeepSeek）</code></td>
 <td><strong>11 / 11 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理</td>
+</tr>
+<tr>
+<td>Word 加载项</td>
+<td>构建/安装成功；VBA 自检 + <strong>隐藏 Word 文档中的选区替换</strong>自检通过（真实 DeepSeek，0.7–1s）</td>
 </tr>
 <tr>
 <td>UI 验收</td>
@@ -528,6 +572,22 @@ node node_modules/@playwright/test/cli.js test
 <td>由 README 生成 HTML 项目主页（<code>docs/index.html</code>）</td>
 </tr>
 <tr>
+<td><code>pnpm word:install</code></td>
+<td>构建并安装 Word 加载项（复制到 Word STARTUP，无需管理员）</td>
+</tr>
+<tr>
+<td><code>pnpm word:build</code></td>
+<td>仅构建 Word 加载项（<code>word-addin/build/DocMax.dotm</code>）</td>
+</tr>
+<tr>
+<td><code>pnpm word:test</code></td>
+<td>用隐藏 Word 实例运行加载项自检（API + 文档内选区替换）</td>
+</tr>
+<tr>
+<td><code>pnpm word:uninstall</code></td>
+<td>卸载 Word 加载项</td>
+</tr>
+<tr>
 <td><code>node node_modules/tsx/dist/cli.mjs scripts/smoke.ts</code></td>
 <td>端到端冒烟（rewrite）</td>
 </tr>
@@ -576,9 +636,11 @@ node node_modules/@playwright/test/cli.js test
 server/            Node/Express 服务（唯一持有 API Key 的进程）
   deepseek.ts      DeepSeek 流式客户端 + 错误映射
   editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
+  wordRoute.ts     /api/word/edit：Word 插件专用，一次性 JSON 返回
   docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
   index.ts         单进程：API + Vite middleware / dist 静态文件
 src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
 tests/             vitest 单元测试（含 docx 转换与测试夹具）
 e2e/               Playwright 测试（AI 编辑 + docx 导入）
 scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
@@ -591,7 +653,8 @@ docs/             HTML 项目主页与截图
 <li>服务默认只监听 <code>127.0.0.1</code>；</li>
 <li>文档内容仅发送给 DeepSeek API，不经过其他第三方；</li>
 <li>文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；</li>
-<li>Word 转换禁用外部文件访问，并过滤 <code>javascript:</code> / <code>data:</code> / <code>file:</code> 等危险链接。</li>
+<li>Word 转换禁用外部文件访问，并过滤 <code>javascript:</code> / <code>data:</code> / <code>file:</code> 等危险链接；</li>
+<li>Word 加载项只访问本机 <code>127.0.0.1</code>，源码在仓库内可审计，构建后安装到 STARTUP。</li>
 </ul>
 <h2 id="已知限制">已知限制</h2>
 <ul>

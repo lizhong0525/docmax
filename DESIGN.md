@@ -259,7 +259,51 @@ surgical 的锚点匹配是**分层**的，绝不「第一次匹配就应用」�
 
 纯手工排版的“伪标题”按普通段落处理；合并单元格展平；页眉页脚/批注/修订痕迹不导出；脚注会变成文末链接列表；纸张分栏等信息丢失。对「先转成可编辑的 Markdown 再让 DeepSeek 精修」这个目标，这些取舍是合理的。
 
-## 8. 已知限制与后续方向
+## 8. Word 加载项（在 Word 内直接选区编辑）
+
+需求：不离开 Word 就能对选中文字做 AI 改写/润色/解释。
+
+### 8.1 载体选型
+
+| 方案 | 结论 |
+| --- | --- |
+| Office JS 加载项（现代 Web Add-in） | 需要 HTTPS 托管 + 开发证书信任 + manifest 旁加载；安装步骤多，还要处理 HTTPS→HTTP 本地 API 的混合内容问题 |
+| VSTO / COM 加载项 | 需要 .NET/Visual Studio 构建、注册表/安装器，部署成本高 |
+| **Word VBA 模板加载项（.dotm）** | ✅ 复制到 `%APPDATA%\Microsoft\Word\STARTUP` 即安装（无需管理员）；桌面 Word 原生支持；离线可审计；可直接 HTTP 访问本机服务 |
+| Word 宏（Normal.dotm 里放宏） | ❌ 污染用户全局模板，升级/卸载麻烦 |
+| 复制到剪贴板 → Web 编辑器 → 粘贴回来 | ❌ 正是要消除的割裂流程 |
+
+### 8.2 架构
+
+```
+Word 功能区「DocMax」选项卡（customUI.xml）
+   → VBA 模块 DocMax.bas（读取 Selection、前后文，JSON 编码，UTF-8 HTTP）
+   → POST http://127.0.0.1:5199/api/word/edit（一次性 JSON）
+   → 服务端复用 /api/edit 同一套流水线（本地识别 → 提示词 → DeepSeek → 解析 → 校验 → 自动修复）
+   → 返回 { ok, newText, warnings, truncated, analysisSummary, latencyMs }
+   → VBA 预览确认框 → 替换 Selection.Range（保留段落/单元格结束符）→ Ctrl+Z 可撤销
+```
+
+关键工程点：
+
+- **偏移问题不存在**：Word 的 `Range.Start/End` 与 JS 的 UTF-16 偏移在 emoji、域代码上不完全一致。加载项不传偏移，只传「选区文本 + 前后文」；服务端用 `before + selection + after` 构造局部文档，复用现有提示词/校验/修复，最后只返回替换文本，由 VBA 在自己捕获的 Range 上应用。
+- **VBA 无法消费 SSE**：新增 `POST /api/word/edit` 聚合 SSE 事件为一次 JSON（`server/wordRoute.ts`），错误也以 `{ok:false, code, error}` 返回，便于 VBA 解析。
+- **UTF-8 中文**：VBA 字符串是 UTF-16，HTTP 请求/响应用 ADODB.Stream 显式做 UTF-8 编解码，避免中文乱码。
+- **安全**：加载项只请求 `127.0.0.1`；没有外部文件访问；所有代码在仓库中可审计；替换前必须用户确认，Word 原生撤销兜底。
+- **自动启动服务**：服务未运行时，VBA 通过 `WScript.Shell` 隐藏调用 `scripts/start-docmax.ps1 -NoBrowser` 并轮询健康检查，用户不需要开终端。
+
+### 8.3 构建、安装与验证
+
+- `word-addin/build.ps1`：用 Word COM 创建隐藏空白文档，写入 VBA（构建时替换项目路径占位符），另存为 `.dotm`，再向 OOXML 包注入 `customUI/customUI.xml` 与关系/内容类型；构建期间临时开启「信任对 VBA 工程对象模型的访问」，结束后恢复。
+- `word-addin/install.ps1`：构建（可选）→ 复制到 Word STARTUP → 确保本地服务运行 → 用隐藏 Word 实例验证。
+- `word-addin/test.ps1`：隐藏 Word 运行两个自检宏：`DocMaxSelfTest`（API 链路）与 `DocMaxSelfTestDocument`（隐藏临时文档里选中文字 → 请求 → 替换选区 → 检查结果），不触碰用户正在编辑的文档。
+- 实测：VBA 编译通过；两个自检均返回 OK；一次改写端到端约 0.7–1.0s。
+
+### 8.4 限制
+
+仅 Windows 桌面版 Word；依赖宏信任设置（STARTUP 模板通常自动加载，异常时需检查信任中心）；Ribbon 按钮文本为中文；不处理 Word Online；超长选区（>20 万字符）拒绝；预览确认框最多展示 900 字符（完整结果仍会应用）。
+
+## 9. 已知限制与后续方向
 
 - 多选区目前串行逐区处理（v1：主选区优先），并行 + 合并为一个事务是可做的下一步；
 - surgical 模式对「同一短句在选区内重复」仍可能触发一次修复重试（已有 FIND_ALL 支持，长重复文本一次通过率待评测数据）；

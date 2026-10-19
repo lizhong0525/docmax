@@ -12,4 +12,5 @@ e2e/.artifacts/
 playwright-report/
 
 .vitest/
+word-addin/build/
 
