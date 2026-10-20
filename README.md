@@ -8,8 +8,8 @@
 ![许可证](https://img.shields.io/badge/license-未声明-lightgrey)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A522-339933)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-V4.1%20Flash-4D6BFE)
-![Tests](https://img.shields.io/badge/tests-251%2F251-brightgreen)
-![E2E](https://img.shields.io/badge/E2E-11%2F11-brightgreen)
+![Tests](https://img.shields.io/badge/tests-261%2F261-brightgreen)
+![E2E](https://img.shields.io/badge/E2E-12%2F12-brightgreen)
 
 ![审阅面板：本地识别 + 模型识别 + 词级 diff](docs/screenshots/03-review-diff.png)
 
@@ -38,6 +38,8 @@
 
 **模型选区编辑**
 - `Ctrl/⌘ K` 指令条：润色 / 更简洁 / 扩写 / 缩写 / 改写 / 翻译 / 修正 / 解释，也可自由输入
+- **9 种系统内置提示词模式**：默认编辑、结构重写·括号补全、精简、扩写、正式/学术、通俗、最小校对、结构化整理、翻译中英；指令可留空
+- **不限制输出长度**：不发送 `max_tokens`，长文不会被人为截断；长任务超时默认 10 分钟
 - 三种编辑模式：**整体重写**（默认，≤4000 字）、**局部精准修改**（长选区/机械替换）、**光标插入**
 - 「解释」模式只回答关于选区的问题，不修改文档
 - 流式审阅：阶段（连接/思考/生成/校验/修复）、模型识别结果、思考过程（可折叠）、token 与首字延迟
@@ -53,7 +55,7 @@
 **工程与质量**
 - 前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换
 - 服务端唯一持有 API Key；文档仅发送给 DeepSeek
-- 251 个单元测试、30 例真实模型评测、11 个 Playwright E2E、完整验证报告
+- 261 个单元测试、30 例真实模型评测、12 个 Playwright E2E、完整验证报告
 
 ## 截图
 
@@ -84,6 +86,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com  # 可选（OpenAI 兼容网关）
 PORT=5199                                   # 可选
 DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
 DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
+DOCMAX_TIMEOUT_MS=600000                    # 可选：单次生成超时（默认 10 分钟）
 ```
 
 生产运行：
@@ -139,7 +142,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 选中任意文字后：
 
 - 点击浮出的「✦ AI 修改」，或按 `Ctrl/⌘ K` 打开指令条
-- 输入指令（`Enter` 提交，`Shift+Enter` 换行），或用快捷标签
+- 输入指令（`Enter` 提交，`Shift+Enter` 换行），或用快捷标签；也可以只选一个「提示词模式」直接提交
 - 等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告
 - `Ctrl/⌘ Enter` 接受（一次性应用），`Esc` 放弃
 - 接受后按 `Ctrl/⌘ Z`，**一步撤销**回到修改前
@@ -157,6 +160,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 | `Ctrl/⌘ S` / `Ctrl/⌘ Shift S` | 保存 / 另存为 |
 | `Ctrl/⌘ P` | 切换 Markdown 预览 |
 | `Ctrl/⌘ /` | 快捷键帮助 |
+
+### 提示词模式（系统内置）
+
+指令条里除了自由指令与快捷标签，还有一个「提示词」下拉。它改的是**系统级任务设定**，决定模型「以什么方式」完成修改：
+
+| 模式 | 用途 |
+| --- | --- |
+| 默认编辑 | 按指令直接改；保留原文信息、语气与结构 |
+| **结构重写 · 括号补全** | 按原文结构骨架重写；信息缺失处不编造，用 `（需补充：…）` 标注 |
+| 精简压缩 | 删冗余、去口水话，保留事实、结论与结构 |
+| 扩写补全 | 补充细节、解释与过渡；不编造数据 |
+| 正式 / 学术 | 正式、专业、克制的书面表达 |
+| 通俗解释 | 更口语、易懂地重写，保留关键信息 |
+| 最小校对 | 只修错别字、标点、语法；不润色、不改结构 |
+| 结构化整理 | 整理成清晰的标题 / 列表 / 表格；不增删信息 |
+| 翻译成英文 / 中文 | 自然翻译，保留 Markdown 结构、术语与数字 |
+
+几点行为：
+
+- 选了**非默认模式后，指令可以留空**，直接使用该模式的默认任务；也可以继续补充自己的要求；
+- 「结构重写」专治原文写到一半、信息不全：保留原有标题/列表/表格结构，缺失处写成 `（需补充：具体缺什么）`，不会编造事实；
+- **不限制输出长度**：服务端不发送 `max_tokens`，长文不会被 1K/2K 的人为上限截断；生成超时默认 10 分钟，可用 `DOCMAX_TIMEOUT_MS` 调整；
+- 解释模式不使用提示词模式，只回答问题。
 
 ## 从 Word 导入（docx → Markdown）
 
@@ -201,6 +227,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\install.ps1
 | 按钮 | 行为 |
 | --- | --- |
 | **AI 改写…** | 输入任意指令（润色 / 扩写 / 翻译 / 改成更正式…），预览后替换选区 |
+| **结构重写** | 按原文结构重写；信息缺失处用 `（需补充：…）` 标注，不编造 |
 | **润色** | 一键润色选中文字（保持原意） |
 | **解释** | 只解释含义/结构/作用，不修改原文 |
 | **检查服务** / **打开 DocMax 编辑器** | 查看/启动本地服务，或打开完整 Markdown 编辑器 |
@@ -213,7 +240,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\install.ps1
 - 文档内容只发送到本机 `127.0.0.1:5199`，再由本机服务转发 DeepSeek；插件本身没有外部网络访问；
 - 卸载：`powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\uninstall.ps1`（重启 Word 生效）。
 
-实现方式：Word VBA 模板加载项（`.dotm`，复制到 Word 的 `STARTUP` 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 `POST /api/word/edit`，该接口复用编辑器同一套「选区识别 → 提示词 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 [`word-addin`](word-addin)。
+实现方式：Word VBA 模板加载项（`.dotm`，复制到 Word 的 `STARTUP` 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 `POST /api/word/edit`，该接口复用编辑器同一套「选区识别 → 提示词模式 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 [`word-addin`](word-addin)。
 
 限制：仅 Windows 桌面版 Word（Office 2016+ / Microsoft 365）；需要允许宏（STARTUP 模板通常自动加载；若功能区未出现，请检查 Word「选项 → 信任中心 → 宏设置」）；不支持 Word Online。
 
@@ -244,13 +271,15 @@ Node 单进程（Express 5 + Vite middleware）
 
 | 项目 | 结果 |
 | --- | --- |
-| 核心单元测试 | **251 / 251 通过**（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换） |
+| 核心单元测试 | **261 / 261 通过**（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 `max_tokens`） |
 | 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
 | 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
 | 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
 | 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
-| `E2E（真实 Chrome + 真实 DeepSeek）` | **11 / 11 通过**：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理 |
-| Word 加载项 | 构建/安装成功；VBA 自检 + **隐藏 Word 文档中的选区替换**自检通过（真实 DeepSeek，0.7–1s） |
+| 长输出 / 无限制 | 单次实测 **2352 字**、`completionTokens=1367`（旧 1024 token 上限会截断），`truncated=false` |
+| 结构重写模式 | 真实模型输出保留标题/列表/表格结构，并为 4 处缺口生成 `（需补充：…）`，未编造事实 |
+| `E2E（真实 Chrome + 真实 DeepSeek）` | **12 / 12 通过**：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式（空指令提交）+ docx 导入替换/取消/图片占位/错误处理 |
+| Word 加载项 | 构建/安装成功；VBA 自检 + **隐藏 Word 文档中的选区替换**自检通过（真实 DeepSeek，0.7–1.1s）；新增「结构重写」按钮 |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
 完整数据与可复跑命令见 [评测报告](.research/eval-report.md)、[验证报告](.research/verification-report.md)、[UI 验收报告](docs/ui-verification.md)。
@@ -292,7 +321,8 @@ node node_modules/@playwright/test/cli.js test
 | --- | --- |
 | `GET /api/health` | 服务状态、是否已配置 API Key、当前模型 |
 | `GET /api/config` | 公开配置（模型列表、限额、默认值） |
-| `POST /api/edit` | 选区编辑，SSE 流：`meta → status → reasoning/delta → proposal → done` |
+| `POST /api/edit` | 选区编辑，SSE 流：`meta → status → reasoning/delta → proposal → done`；`options.presetId` 选择系统提示词模式 |
+| `POST /api/word/edit` | Word 加载项专用，一次性 JSON；同样支持 `presetId`，不限制输出长度 |
 | `POST /api/import/docx` | 请求体为 `.docx` 二进制，返回 Markdown + 统计 + 警告 |
 
 ## 项目结构
@@ -306,6 +336,7 @@ src/core/          前后端共享的纯 TS 核心
   parse.ts         流式容错解析器（rewrite/surgical/ask，处理截断与缺标记）
   apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
   diff.ts          CJK 友好的词级 diff
+  presets.ts       系统内置提示词模式（默认 / 结构重写·括号补全 / 精简 / 扩写 / …）
   protocol.ts      SSE 编码、公开配置
   client.ts        浏览器端 SSE 客户端
 server/            Node/Express 服务（唯一持有 API Key 的进程）
@@ -337,6 +368,7 @@ docs/             HTML 项目主页与截图
 
 - 多选区目前逐个串行处理，尚未合并为一次请求；
 - surgical 模式遇到选区内大量重复短句时可能触发一次自动修复重试（已有 `FIND_ALL` 支持）；
+- 不发送 `max_tokens`，但输出仍受模型/服务端的默认上限约束；超长输出可能遇到模型侧上限（此时会给出截断警告，不会静默应用）；
 - 仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；
 - 协同编辑 / 云同步未实现（本地优先是有意选择）；
 - Word 导入为语义转换，不保证版式级还原（详见上文限制）。

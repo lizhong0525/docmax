@@ -240,6 +240,36 @@ test.describe('空选区插入', () => {
   });
 });
 
+test.describe('系统提示词模式', () => {
+  test('结构重写模式：指令可留空，提交后得到提案并可应用', async ({ page }) => {
+    const doc = '我们计划开发一个（），用于提升团队效率，目标是在（）上线。\n\n第二段保持不变。\n';
+    await page.goto('/');
+    await setDocument(page, doc);
+    const before = await readEditor(page);
+
+    await selectLine(page, 0);
+    await openCommandBar(page);
+    await page.locator('[data-testid="select-preset"]').selectOption('structure-fill');
+    await expect(page.locator('[data-testid="preset-hint"]')).toContainText('结构重写');
+    // 已选非默认提示词模式：指令留空也应允许提交（使用模式默认指令）
+    await expect(page.locator('[data-testid="command-input"]')).toHaveValue('');
+    await expect(page.locator('[data-testid="command-submit"]')).toBeEnabled();
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-preset-structure.png` });
+
+    await page.locator('[data-testid="command-submit"]').click();
+    await waitForProposal(page);
+    await page.locator('[data-testid="accept"]').click();
+    await waitReviewClosed(page);
+
+    const after = await readEditor(page);
+    expect(after).not.toBe(before);
+    expect(after.length).toBeGreaterThan(0);
+    // 选区之外零改动
+    expect(after).toContain('第二段保持不变。');
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-preset-applied.png` });
+  });
+});
+
 test.describe('响应式布局', () => {
   test('窄屏下指令条可用且截图留档', async ({ page }) => {
     await page.setViewportSize({ width: 520, height: 900 });

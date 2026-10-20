@@ -46,8 +46,8 @@ export const config = {
   baseUrl: (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, ''),
   defaultModel: pickModel(process.env.DOCMAX_MODEL),
   defaultThinking: (process.env.DOCMAX_THINKING as ThinkingLevel) || 'off',
-  /** 单次请求总超时 */
-  requestTimeoutMs: Number(process.env.DOCMAX_TIMEOUT_MS || 180_000),
+  /** 单次请求总超时：不限制输出长度时，长文生成可能持续数分钟 */
+  requestTimeoutMs: Number(process.env.DOCMAX_TIMEOUT_MS || 600_000),
   /** 上游首个字节超时 */
   connectTimeoutMs: Number(process.env.DOCMAX_CONNECT_TIMEOUT_MS || 30_000),
   /** docx 导入大小上限 */

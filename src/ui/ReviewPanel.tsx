@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import type { EditProposal, LocalSelectionAnalysis, ModelAnalysis, ProposalWarning } from '../core/types';
+import { promptPresetLabel } from '../core/presets';
 import { DiffView } from './DiffView';
 import { MarkdownPreview } from './Preview';
 import type { EditSessionState } from './types';
@@ -366,6 +367,7 @@ export function ReviewPanel(props: ReviewPanelProps) {
         <div className="review-meta">
           <span>{modelLabel(state.model)}</span>
           {mode ? <span>{MODE_LABELS[mode]}</span> : null}
+          {!isAsk ? <span>提示词 · {promptPresetLabel(state.presetId)}</span> : null}
           {state.usage ? <span>{formatCount(state.usage.totalTokens)} tokens</span> : null}
           {state.timings?.firstContentMs ? <span>首字 {formatDuration(state.timings.firstContentMs)}</span> : null}
           {state.timings?.repairs ? <span>修复 {state.timings.repairs} 次</span> : null}

@@ -241,6 +241,43 @@ async function main(): Promise<void> {
     wordEmptyInstructionBody,
   );
 
+  console.log('\n[7] 提示词模式 / 无输出限制');
+  const presetRequest = {
+    instruction: '',
+    mode: 'rewrite',
+    presetId: 'structure-fill',
+    selection: {
+      text: '这个功能目前有一个问题，就是当用户点击按钮以后页面会一直卡住不动，我们需要尽快修复它。',
+      before: '## 已知问题\n\n',
+      after: '\n\n## 下一步\n\n继续跟进。',
+    },
+    docTitle: '结构重写测试.docx',
+  };
+  const presetRes = await fetch(`${BASE}/api/word/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(presetRequest),
+  });
+  const presetBody = (await presetRes.json()) as { ok?: boolean; newText?: string; error?: string; warnings?: unknown[] };
+  check('非默认提示词模式 + 空指令 → ok', presetRes.status === 200 && presetBody.ok === true, presetBody.error ?? presetBody.ok);
+  check(
+    '结构重写模式返回非空文本',
+    typeof presetBody.newText === 'string' && presetBody.newText.length > 10,
+    presetBody.newText,
+  );
+
+  const defaultEmptyRes = await fetch(`${BASE}/api/word/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...presetRequest, presetId: 'default' }),
+  });
+  const defaultEmptyBody = (await defaultEmptyRes.json()) as { ok?: boolean; code?: string };
+  check(
+    '默认模式 + 空指令 → ok=false empty-instruction',
+    defaultEmptyRes.status === 200 && defaultEmptyBody.ok === false && defaultEmptyBody.code === 'empty-instruction',
+    defaultEmptyBody,
+  );
+
   console.log(failures === 0 ? '\n✅ API 自检全部通过' : `\n❌ ${failures} 项失败`);
   process.exitCode = failures ? 1 : 0;
 }

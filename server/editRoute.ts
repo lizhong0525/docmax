@@ -18,6 +18,7 @@ import { createMarkers } from '../src/core/markers';
 import { StreamParser, type ParseResult } from '../src/core/parse';
 import { buildProposal, validateRequestSnapshot, type RepairHint } from '../src/core/apply';
 import { buildRepairMessage, buildSystemPrompt, buildUserPrompt } from '../src/core/prompt';
+import { getPromptPreset } from '../src/core/presets';
 import { encodePing, encodeSse } from '../src/core/protocol';
 import type { EditMode, EditRequest, ServerEvent, Timings, Usage } from '../src/core/types';
 
@@ -42,8 +43,16 @@ export function validateEditRequest(body: unknown): { request?: EditRequest; err
   const b = body as Partial<EditRequest>;
   if (typeof b.requestId !== 'string' || !b.requestId) return { error: { status: 400, code: 'bad-request', message: '缺少 requestId' } };
   if (typeof b.docText !== 'string') return { error: { status: 400, code: 'bad-request', message: '缺少 docText' } };
-  if (typeof b.instruction !== 'string' || !b.instruction.trim()) {
-    return { error: { status: 400, code: 'empty-instruction', message: '指令不能为空' } };
+
+  const rawOptions = (b.options ?? {}) as EditRequest['options'];
+  const preset = getPromptPreset(rawOptions.presetId);
+  const requestedMode: EditMode = VALID_MODES.includes(rawOptions.mode) ? rawOptions.mode : 'rewrite';
+  const instructionText = typeof b.instruction === 'string' ? b.instruction.trim() : '';
+  if (!instructionText) {
+    // 选了非默认提示词模式时可以不写指令（使用该模式的默认指令）；解释模式仍需要问题
+    if (requestedMode === 'ask' || preset.id === 'default') {
+      return { error: { status: 400, code: 'empty-instruction', message: '指令不能为空' } };
+    }
   }
   if (!Array.isArray(b.ranges) || b.ranges.length !== 1) {
     return { error: { status: 400, code: 'bad-ranges', message: '每次请求必须包含且仅包含一个选区快照' } };
@@ -70,7 +79,7 @@ export function validateEditRequest(body: unknown): { request?: EditRequest; err
       error: { status: 413, code: 'selection-too-large', message: `选区超过上限（${config.limits.maxSelectionChars} 字符），请缩小选区。` },
     };
   }
-  if (b.instruction.length > config.limits.maxInstructionChars) {
+  if (instructionText.length > config.limits.maxInstructionChars) {
     return { error: { status: 413, code: 'instruction-too-long', message: `指令超过上限（${config.limits.maxInstructionChars} 字符）。` } };
   }
   const snapshotError = validateRequestSnapshot(b.docText, range as EditRequest['ranges'][number]);
@@ -78,23 +87,24 @@ export function validateEditRequest(body: unknown): { request?: EditRequest; err
   if (fnv1a32(range.text) !== range.hash) {
     return { error: { status: 400, code: 'hash-mismatch', message: '选区指纹不匹配，请重新生成请求。' } };
   }
-  const rawOptions = (b.options ?? {}) as EditRequest['options'];
   const mode = VALID_MODES.includes(rawOptions.mode) ? rawOptions.mode : 'rewrite';
   const thinking = VALID_THINKING.includes(rawOptions.thinking) ? rawOptions.thinking : 'off';
   const model = VALID_MODELS.includes(rawOptions.model) ? rawOptions.model : config.defaultModel;
   const resolvedMode: EditMode =
     mode === 'ask' ? 'ask' : range.text.length === 0 ? (mode === 'surgical' ? 'insert' : mode === 'insert' ? 'insert' : 'insert') : mode === 'insert' ? 'rewrite' : mode;
+  const finalInstruction = instructionText || preset.defaultInstruction;
   const request: EditRequest = {
     requestId: b.requestId,
     docRev: typeof b.docRev === 'number' ? b.docRev : 0,
     docText: b.docText,
     docTitle: typeof b.docTitle === 'string' ? b.docTitle : '',
     ranges: [range as EditRequest['ranges'][number]],
-    instruction: b.instruction.trim(),
+    instruction: finalInstruction,
     options: {
       model: model as EditRequest['options']['model'],
       thinking: thinking as EditRequest['options']['thinking'],
       mode: resolvedMode,
+      presetId: preset.id,
       analysis: rawOptions.analysis !== false,
       contextChars: clamp(rawOptions.contextChars ?? config.limits.defaultContextChars, 0, config.limits.maxContextChars, config.limits.defaultContextChars),
       maxRewriteChars: clamp(rawOptions.maxRewriteChars ?? config.limits.defaultMaxRewriteChars, 200, config.limits.maxSelectionChars, config.limits.defaultMaxRewriteChars),
@@ -104,23 +114,6 @@ export function validateEditRequest(body: unknown): { request?: EditRequest; err
     },
   };
   return { request };
-}
-
-function computeMaxTokens(mode: EditMode, selectionChars: number, attempt: number): number {
-  let base: number;
-  switch (mode) {
-    case 'ask':
-      base = 2_048;
-      break;
-    case 'surgical':
-      base = Math.max(2_048, Math.ceil(selectionChars * 0.5) + 1_024);
-      break;
-    default:
-      // 输出规模与选区相近；CJK 约 1 token/字，英文约 0.3 token/字符
-      base = Math.max(1_024, Math.ceil(selectionChars * 1.25) + 768);
-  }
-  const withRetry = attempt > 0 ? Math.ceil(base * 1.5) : base;
-  return Math.min(64_000, Math.max(1_024, withRetry));
 }
 
 function mergeUsage(target: Usage, next: Usage | undefined): void {
@@ -155,7 +148,7 @@ export async function executeEdit(
   const mode = request.options.mode;
   const local = analyzeSelection(request.docText, range.from, range.to, 0);
   const markers = createMarkers([request.docText, request.instruction, range.before, range.after]);
-  const promptOptions = { markers, mode, analysis: request.options.analysis };
+  const promptOptions = { markers, mode, analysis: request.options.analysis, presetId: request.options.presetId };
 
   const timings: Timings = { startedAt, attempts: 0, repairs: 0 };
   const usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -170,7 +163,7 @@ export async function executeEdit(
     startedAt,
   });
 
-  const systemPrompt = buildSystemPrompt(mode, markers, request.options.analysis);
+  const systemPrompt = buildSystemPrompt(mode, markers, request.options.analysis, request.options.presetId);
   const userPrompt = buildUserPrompt(request, [local], promptOptions);
   const baseMessages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -203,12 +196,11 @@ export async function executeEdit(
 
     let streamedContent = false;
     try {
-      const maxTokens = computeMaxTokens(mode, range.text.length, attempt);
+      // 不传 max_tokens：输出长度交给模型/服务端默认上限，避免长文被中途截断
       const iterator = streamChat({
         model: request.options.model,
         messages,
         thinking: request.options.thinking,
-        maxTokens,
         signal,
       });
       for await (const chunk of iterator) {

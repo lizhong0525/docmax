@@ -15,6 +15,7 @@ import { fetchHealth } from './core/client';
 import { applyProposals } from './core/apply';
 import { analyzeSelection, buildRangeSnapshot } from './core/selection';
 import { DEFAULT_LIMITS } from './core/protocol';
+import { getPromptPreset, type PromptPresetId } from './core/presets';
 import type { EditProposal, ModelId, ThinkingLevel } from './core/types';
 import { CodeMirrorEditor, type CodeMirrorEditorHandle } from './ui/CodeMirrorEditor';
 import { SelectionStatus } from './ui/SelectionStatus';
@@ -88,12 +89,18 @@ export function App() {
   const [docxImport, setDocxImport] = useState<DocxImportState | null>(null);
   const [confirmAccept, setConfirmAccept] = useState(false);
   const [staleOverride, setStaleOverride] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<{ model: ModelId; thinking: ThinkingLevel; modeChoice: ModeChoice }>(() => {
+  const [prefs, setPrefs] = useState<{
+    model: ModelId;
+    thinking: ThinkingLevel;
+    modeChoice: ModeChoice;
+    presetId: PromptPresetId;
+  }>(() => {
     const stored = loadPrefs();
     return {
       model: stored.model ?? 'deepseek-flash',
       thinking: stored.thinking ?? 'off',
       modeChoice: 'auto',
+      presetId: getPromptPreset(stored.presetId).id,
     };
   });
 
@@ -242,8 +249,8 @@ export function App() {
     const context = buildContext();
     if (!context) return;
     lastParamsRef.current = params;
-    setPrefs({ model: params.model, thinking: params.thinking, modeChoice: params.modeChoice });
-    storePrefs({ model: params.model, thinking: params.thinking });
+    setPrefs({ model: params.model, thinking: params.thinking, modeChoice: params.modeChoice, presetId: params.presetId });
+    storePrefs({ model: params.model, thinking: params.thinking, presetId: params.presetId });
     session.start(params, context);
   };
 
@@ -328,6 +335,7 @@ export function App() {
         thinking: sessionState.thinking,
         modeChoice: sessionState.modeChoice,
         ask: sessionState.ask,
+        presetId: sessionState.presetId,
       };
     }
     return lastParamsRef.current;

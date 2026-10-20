@@ -14,6 +14,7 @@ import type {
   Timings,
   Usage,
 } from '../core/types';
+import type { PromptPresetId } from '../core/presets';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -66,6 +67,8 @@ export interface RunParams {
   thinking: ThinkingLevel;
   modeChoice: ModeChoice;
   ask: boolean;
+  /** 系统内置提示词模式 */
+  presetId: PromptPresetId;
 }
 
 export type StreamPhase = 'connecting' | 'thinking' | 'streaming' | 'validating' | 'repairing' | 'done';
@@ -91,6 +94,7 @@ export interface EditSessionState {
   thinking: ThinkingLevel;
   modeChoice: ModeChoice;
   ask: boolean;
+  presetId: PromptPresetId;
   /** 多选区串行处理的进度 */
   batch: { current: number; total: number };
   reasoning: string;

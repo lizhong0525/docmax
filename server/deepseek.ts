@@ -19,8 +19,25 @@ export interface StreamChatOptions {
   model: ModelId;
   messages: ChatMessage[];
   thinking: ThinkingLevel;
-  maxTokens: number;
   signal: AbortSignal;
+}
+
+/** 构造 Chat Completions 请求体（导出以便单测断言「不发送输出限制」） */
+export function buildChatRequestBody(opts: Omit<StreamChatOptions, 'signal'>): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages,
+    stream: true,
+    // 不发送 max_tokens：输出长度交给模型/服务端的默认上限，避免中途被截断
+    stream_options: { include_usage: true },
+  };
+  if (opts.thinking === 'off') {
+    body.thinking = { type: 'disabled' };
+  } else {
+    body.thinking = { type: 'enabled' };
+    body.reasoning_effort = opts.thinking;
+  }
+  return body;
 }
 
 export interface ChatStreamChunk {
@@ -74,19 +91,7 @@ export async function* streamChat(opts: StreamChatOptions): AsyncGenerator<ChatS
   if (!config.apiKey) {
     throw new DeepSeekError('missing-api-key', '服务端未配置 DEEPSEEK_API_KEY，请在项目根目录的 .env 中填写。', 0, false);
   }
-  const body: Record<string, unknown> = {
-    model: opts.model,
-    messages: opts.messages,
-    stream: true,
-    max_tokens: opts.maxTokens,
-    stream_options: { include_usage: true },
-  };
-  if (opts.thinking === 'off') {
-    body.thinking = { type: 'disabled' };
-  } else {
-    body.thinking = { type: 'enabled' };
-    body.reasoning_effort = opts.thinking;
-  }
+  const body = buildChatRequestBody({ model: opts.model, messages: opts.messages, thinking: opts.thinking });
 
   let response: Response;
   try {

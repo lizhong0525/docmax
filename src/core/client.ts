@@ -4,6 +4,7 @@
  */
 import type { EditProposal, EditRequest, EditOptions, ServerEvent, Usage, Timings } from './types';
 import type { PublicConfig } from './protocol';
+import { DEFAULT_PRESET_ID } from './presets';
 
 export interface StreamHandlers {
   onMeta?: (event: Extract<ServerEvent, { type: 'meta' }>) => void;
@@ -194,6 +195,7 @@ export function defaultEditOptions(partial: Partial<EditOptions> = {}): EditOpti
     model: 'deepseek-flash',
     thinking: 'off',
     mode: 'rewrite',
+    presetId: DEFAULT_PRESET_ID,
     analysis: true,
     contextChars: 800,
     maxRewriteChars: 4_000,

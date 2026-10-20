@@ -10,6 +10,9 @@
           <button id="DocMaxPolishBtn" label="润色" size="large" onAction="DocMaxPolish"
                   screentip="润色选中的文字"
                   supertip="保持原意，让表达更简洁、专业、流畅。修改结果先预览再应用。"/>
+          <button id="DocMaxStructureBtn" label="结构重写" size="large" onAction="DocMaxStructure"
+                  screentip="按原结构重写；信息缺失处用（需补充：…）标注"
+                  supertip="保留原文结构骨架重写；信息不完整处不编造，用中文括号标注需要补充的内容。结果先预览再应用。"/>
           <button id="DocMaxExplainBtn" label="解释" size="large" onAction="DocMaxExplain"
                   screentip="让 DocMax 解释选中文字"
                   supertip="只解释含义、结构与作用，不修改原文。"/>

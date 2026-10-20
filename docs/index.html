@@ -269,6 +269,8 @@
 <p><strong>模型选区编辑</strong></p>
 <ul>
 <li><code>Ctrl/⌘ K</code> 指令条：润色 / 更简洁 / 扩写 / 缩写 / 改写 / 翻译 / 修正 / 解释，也可自由输入</li>
+<li><strong>9 种系统内置提示词模式</strong>：默认编辑、结构重写·括号补全、精简、扩写、正式/学术、通俗、最小校对、结构化整理、翻译中英；指令可留空</li>
+<li><strong>不限制输出长度</strong>：不发送 <code>max_tokens</code>，长文不会被人为截断；长任务超时默认 10 分钟</li>
 <li>三种编辑模式：<strong>整体重写</strong>（默认，≤4000 字）、<strong>局部精准修改</strong>（长选区/机械替换）、<strong>光标插入</strong></li>
 <li>「解释」模式只回答关于选区的问题，不修改文档</li>
 <li>流式审阅：阶段（连接/思考/生成/校验/修复）、模型识别结果、思考过程（可折叠）、token 与首字延迟</li>
@@ -286,7 +288,7 @@
 <ul>
 <li>前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换</li>
 <li>服务端唯一持有 API Key；文档仅发送给 DeepSeek</li>
-<li>251 个单元测试、30 例真实模型评测、11 个 Playwright E2E、完整验证报告</li>
+<li>261 个单元测试、30 例真实模型评测、12 个 Playwright E2E、完整验证报告</li>
 </ul>
 <h2 id="截图">截图</h2>
 <table>
@@ -327,6 +329,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com  # 可选（OpenAI 兼容网关）
 PORT=5199                                   # 可选
 DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
 DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
+DOCMAX_TIMEOUT_MS=600000                    # 可选：单次生成超时（默认 10 分钟）
 </code></pre>
 <p>生产运行：</p>
 <pre><code class="language-bash">pnpm build
@@ -366,7 +369,7 @@ pnpm start                   # 一个进程同时服务 dist/ 与 API
 <p>选中任意文字后：</p>
 <ul>
 <li>点击浮出的「✦ AI 修改」，或按 <code>Ctrl/⌘ K</code> 打开指令条</li>
-<li>输入指令（<code>Enter</code> 提交，<code>Shift+Enter</code> 换行），或用快捷标签</li>
+<li>输入指令（<code>Enter</code> 提交，<code>Shift+Enter</code> 换行），或用快捷标签；也可以只选一个「提示词模式」直接提交</li>
 <li>等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告</li>
 <li><code>Ctrl/⌘ Enter</code> 接受（一次性应用），<code>Esc</code> 放弃</li>
 <li>接受后按 <code>Ctrl/⌘ Z</code>，<strong>一步撤销</strong>回到修改前</li>
@@ -416,6 +419,59 @@ pnpm start                   # 一个进程同时服务 dist/ 与 API
 <td>快捷键帮助</td>
 </tr>
 </tbody></table>
+<h3 id="提示词模式系统内置">提示词模式（系统内置）</h3>
+<p>指令条里除了自由指令与快捷标签，还有一个「提示词」下拉。它改的是<strong>系统级任务设定</strong>，决定模型「以什么方式」完成修改：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>默认编辑</td>
+<td>按指令直接改；保留原文信息、语气与结构</td>
+</tr>
+<tr>
+<td><strong>结构重写 · 括号补全</strong></td>
+<td>按原文结构骨架重写；信息缺失处不编造，用 <code>（需补充：…）</code> 标注</td>
+</tr>
+<tr>
+<td>精简压缩</td>
+<td>删冗余、去口水话，保留事实、结论与结构</td>
+</tr>
+<tr>
+<td>扩写补全</td>
+<td>补充细节、解释与过渡；不编造数据</td>
+</tr>
+<tr>
+<td>正式 / 学术</td>
+<td>正式、专业、克制的书面表达</td>
+</tr>
+<tr>
+<td>通俗解释</td>
+<td>更口语、易懂地重写，保留关键信息</td>
+</tr>
+<tr>
+<td>最小校对</td>
+<td>只修错别字、标点、语法；不润色、不改结构</td>
+</tr>
+<tr>
+<td>结构化整理</td>
+<td>整理成清晰的标题 / 列表 / 表格；不增删信息</td>
+</tr>
+<tr>
+<td>翻译成英文 / 中文</td>
+<td>自然翻译，保留 Markdown 结构、术语与数字</td>
+</tr>
+</tbody></table>
+<p>几点行为：</p>
+<ul>
+<li>选了<strong>非默认模式后，指令可以留空</strong>，直接使用该模式的默认任务；也可以继续补充自己的要求；</li>
+<li>「结构重写」专治原文写到一半、信息不全：保留原有标题/列表/表格结构，缺失处写成 <code>（需补充：具体缺什么）</code>，不会编造事实；</li>
+<li><strong>不限制输出长度</strong>：服务端不发送 <code>max_tokens</code>，长文不会被 1K/2K 的人为上限截断；生成超时默认 10 分钟，可用 <code>DOCMAX_TIMEOUT_MS</code> 调整；</li>
+<li>解释模式不使用提示词模式，只回答问题。</li>
+</ul>
 <h2 id="从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</h2>
 <p>Word 文档不想手动重排？点顶栏 <strong>「导入 Word」</strong>，选择 <code>.docx</code>，DocMax 会先在本地转换：</p>
 <ul>
@@ -455,6 +511,10 @@ pnpm docx2md 文档.docx --json
 <td>输入任意指令（润色 / 扩写 / 翻译 / 改成更正式…），预览后替换选区</td>
 </tr>
 <tr>
+<td><strong>结构重写</strong></td>
+<td>按原文结构重写；信息缺失处用 <code>（需补充：…）</code> 标注，不编造</td>
+</tr>
+<tr>
 <td><strong>润色</strong></td>
 <td>一键润色选中文字（保持原意）</td>
 </tr>
@@ -475,7 +535,7 @@ pnpm docx2md 文档.docx --json
 <li>文档内容只发送到本机 <code>127.0.0.1:5199</code>，再由本机服务转发 DeepSeek；插件本身没有外部网络访问；</li>
 <li>卸载：<code>powershell -NoProfile -ExecutionPolicy Bypass -File word-addin\uninstall.ps1</code>（重启 Word 生效）。</li>
 </ul>
-<p>实现方式：Word VBA 模板加载项（<code>.dotm</code>，复制到 Word 的 <code>STARTUP</code> 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 <code>POST /api/word/edit</code>，该接口复用编辑器同一套「选区识别 → 提示词 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 <a href="word-addin"><code>word-addin</code></a>。</p>
+<p>实现方式：Word VBA 模板加载项（<code>.dotm</code>，复制到 Word 的 <code>STARTUP</code> 目录即可安装）+ 自定义功能区（Ribbon customUI）；每次操作调用本机 <code>POST /api/word/edit</code>，该接口复用编辑器同一套「选区识别 → 提示词模式 → DeepSeek → 校验 → 自动修复」流水线，只是把流式结果聚合成一次性 JSON 返回给 Word。构建/自检脚本在 <a href="word-addin"><code>word-addin</code></a>。</p>
 <p>限制：仅 Windows 桌面版 Word（Office 2016+ / Microsoft 365）；需要允许宏（STARTUP 模板通常自动加载；若功能区未出现，请检查 Word「选项 → 信任中心 → 宏设置」）；不支持 Word Online。</p>
 <h2 id="工程方法简要">工程方法（简要）</h2>
 <pre><code>浏览器（React 19 + CodeMirror 6）
@@ -507,7 +567,7 @@ Node 单进程（Express 5 + Vite middleware）
 </thead>
 <tbody><tr>
 <td>核心单元测试</td>
-<td><strong>251 / 251 通过</strong>（解析器任意分块流式一致性、分层锚点匹配、选区识别、diff、客户端 SSE、docx 转换）</td>
+<td><strong>261 / 261 通过</strong>（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 <code>max_tokens</code>）</td>
 </tr>
 <tr>
 <td>真实模型评测</td>
@@ -526,12 +586,20 @@ Node 单进程（Express 5 + Vite middleware）
 <td>30 次真实编辑共约 <strong>$0.0038</strong>（缓存命中时，约 $0.00013/次）</td>
 </tr>
 <tr>
+<td>长输出 / 无限制</td>
+<td>单次实测 <strong>2352 字</strong>、<code>completionTokens=1367</code>（旧 1024 token 上限会截断），<code>truncated=false</code></td>
+</tr>
+<tr>
+<td>结构重写模式</td>
+<td>真实模型输出保留标题/列表/表格结构，并为 4 处缺口生成 <code>（需补充：…）</code>，未编造事实</td>
+</tr>
+<tr>
 <td><code>E2E（真实 Chrome + 真实 DeepSeek）</code></td>
-<td><strong>11 / 11 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + docx 导入替换/取消/图片占位/错误处理</td>
+<td><strong>12 / 12 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式（空指令提交）+ docx 导入替换/取消/图片占位/错误处理</td>
 </tr>
 <tr>
 <td>Word 加载项</td>
-<td>构建/安装成功；VBA 自检 + <strong>隐藏 Word 文档中的选区替换</strong>自检通过（真实 DeepSeek，0.7–1s）</td>
+<td>构建/安装成功；VBA 自检 + <strong>隐藏 Word 文档中的选区替换</strong>自检通过（真实 DeepSeek，0.7–1.1s）；新增「结构重写」按钮</td>
 </tr>
 <tr>
 <td>UI 验收</td>
@@ -634,7 +702,11 @@ node node_modules/@playwright/test/cli.js test
 </tr>
 <tr>
 <td><code>POST /api/edit</code></td>
-<td>选区编辑，SSE 流：<code>meta → status → reasoning/delta → proposal → done</code></td>
+<td>选区编辑，SSE 流：<code>meta → status → reasoning/delta → proposal → done</code>；<code>options.presetId</code> 选择系统提示词模式</td>
+</tr>
+<tr>
+<td><code>POST /api/word/edit</code></td>
+<td>Word 加载项专用，一次性 JSON；同样支持 <code>presetId</code>，不限制输出长度</td>
 </tr>
 <tr>
 <td><code>POST /api/import/docx</code></td>
@@ -650,6 +722,7 @@ node node_modules/@playwright/test/cli.js test
   parse.ts         流式容错解析器（rewrite/surgical/ask，处理截断与缺标记）
   apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
   diff.ts          CJK 友好的词级 diff
+  presets.ts       系统内置提示词模式（默认 / 结构重写·括号补全 / 精简 / 扩写 / …）
   protocol.ts      SSE 编码、公开配置
   client.ts        浏览器端 SSE 客户端
 server/            Node/Express 服务（唯一持有 API Key 的进程）
@@ -680,6 +753,7 @@ docs/             HTML 项目主页与截图
 <ul>
 <li>多选区目前逐个串行处理，尚未合并为一次请求；</li>
 <li>surgical 模式遇到选区内大量重复短句时可能触发一次自动修复重试（已有 <code>FIND_ALL</code> 支持）；</li>
+<li>不发送 <code>max_tokens</code>，但输出仍受模型/服务端的默认上限约束；超长输出可能遇到模型侧上限（此时会给出截断警告，不会静默应用）；</li>
 <li>仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；</li>
 <li>协同编辑 / 云同步未实现（本地优先是有意选择）；</li>
 <li>Word 导入为语义转换，不保证版式级还原（详见上文限制）。</li>
@@ -698,7 +772,7 @@ docs/             HTML 项目主页与截图
       <a href="https://github.com/lizhong0525/docmax">GitHub 仓库</a>
       <a href="https://github.com/lizhong0525/docmax/issues">问题反馈</a>
       <a href="https://lizhong0525.github.io/docmax/">GitHub Pages</a>
-      <span class="generated">由 README.md 自动生成 · 2026-10-19</span>
+      <span class="generated">由 README.md 自动生成 · 2026-10-20</span>
     </div>
   </footer>
 </body>

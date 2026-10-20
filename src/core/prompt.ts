@@ -12,12 +12,15 @@
 import type { LocalSelectionAnalysis, EditRequest, EditMode } from './types';
 import type { Markers } from './markers';
 import type { ParseResult } from './parse';
+import { getPromptPreset, type PromptPreset, type PromptPresetId } from './presets';
 
 export interface PromptOptions {
   markers: Markers;
   mode: EditMode;
   analysis: boolean;
   languageHint?: string | null;
+  /** 系统内置提示词模式 */
+  presetId?: PromptPresetId;
 }
 
 const KIND_HINT = `"kind" 取值：heading / list / table / code / blockquote / paragraph / inline / other；
@@ -73,7 +76,12 @@ const SHARED_RULES = `通用规则（必须遵守）：
 10. 严格使用给定的标记原样输出；标记前后不要加空格或其它字符。`;
 
 /** 系统提示词 */
-export function buildSystemPrompt(mode: EditMode, markers: Markers, analysis: boolean): string {
+export function buildSystemPrompt(
+  mode: EditMode,
+  markers: Markers,
+  analysis: boolean,
+  presetId?: PromptPresetId,
+): string {
   const role =
     mode === 'ask'
       ? '你是一个 Markdown 编辑器内置的阅读助手。用户选中了一段文字并提问，你需要基于选区与上下文给出准确、简洁的回答。'
@@ -81,10 +89,15 @@ export function buildSystemPrompt(mode: EditMode, markers: Markers, analysis: bo
   const analysisRule = analysis
     ? `输出开头必须先给一个分析块，用一行 JSON 描述你对选区的识别与本次修改的理解：${KIND_HINT}`
     : '';
+  // 解释模式不使用编辑类提示词模式
+  const presetBlock = mode === 'ask' ? '' : `${getPromptPreset(presetId).rules}
+
+`;
   return `${role}
 
 ${SHARED_RULES}
-${analysisRule ? analysisRule + '\n' : ''}输出格式（严格按此格式，不要增删标记）：
+
+${presetBlock}${analysisRule ? analysisRule + '\n' : ''}输出格式（严格按此格式，不要增删标记）：
 ${outputSpec(markers, mode, analysis)}`;
 }
 
@@ -160,6 +173,11 @@ export function buildUserPrompt(
     );
   }
 
+  if (opts.mode !== 'ask') {
+    const preset = getPromptPreset(opts.presetId);
+    parts.push(section('prompt_mode', `${preset.label}\n${preset.description}\n（具体规则见系统提示词中的当前任务模式）`));
+  }
+
   parts.push(section('before', range.before || '（无）'));
   parts.push(
     section(
@@ -199,5 +217,6 @@ ${outputSpec(markers, opts.mode, opts.analysis)}
 特别注意：
 - surgical 模式的 FIND 必须从 <selection> 中逐字复制，包括标点与空白，不能转述或省略；FIND 在选区内必须唯一；若同一替换要作用于多处，请使用 ${markers.findAllStart}。
 - 如果选区很长，请只给出必要的锚点块，不要重复整段。
-- 必须输出完整的结束标记 ${markers.editEnd}，不能中途停止。`);  return parts.join('\n\n');
+- 必须输出完整的结束标记 ${markers.editEnd}，不能中途停止。`);
+  return parts.join('\n\n');
 }

@@ -118,6 +118,7 @@ export function storeTheme(theme: 'light' | 'dark'): void {
 export interface StoredPrefs {
   model?: 'deepseek-flash' | 'deepseek-v4-pro';
   thinking?: 'off' | 'low' | 'high' | 'max';
+  presetId?: string;
 }
 
 export function loadPrefs(): StoredPrefs {

@@ -1279,6 +1279,22 @@ button {
   color: var(--warn);
 }
 
+.command-preset-hint {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.command-preset-hint strong {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.field-preset select {
+  max-width: 190px;
+}
+
 .command-warning-error {
   color: var(--danger);
 }

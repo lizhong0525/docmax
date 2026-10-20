@@ -12,7 +12,7 @@ Option Explicit
 '  {{DOCMAX_ROOT}} 会在构建时被替换为本机项目目录。
 ' ============================================================================
 
-Private Const ADDIN_VERSION As String = "0.2.0"
+Private Const ADDIN_VERSION As String = "0.3.0"
 Private Const DOCMAX_ROOT As String = "{{DOCMAX_ROOT}}"
 Private Const API_BASE As String = "http://127.0.0.1:5199"
 Private Const API_EDIT As String = API_BASE & "/api/word/edit"
@@ -41,6 +41,10 @@ End Sub
 
 Public Sub DocMaxPolish(control As Object)
     ApplySelectionEdit "润色这段文字，保持原意，让表达更简洁、专业、流畅。", "rewrite"
+End Sub
+
+Public Sub DocMaxStructure(control As Object)
+    ApplySelectionEdit "按照原文的结构重写这段内容；信息不完整或有缺失的地方，用（需补充：…）标注需要补充什么。", "rewrite", "structure-fill"
 End Sub
 
 Public Sub DocMaxExplain(control As Object)
@@ -87,7 +91,7 @@ End Sub
 '  主流程：读取选区 → 请求 DocMax → 预览确认 → 替换选区
 ' ============================================================================
 
-Private Sub ApplySelectionEdit(ByVal instruction As String, ByVal mode As String)
+Private Sub ApplySelectionEdit(ByVal instruction As String, ByVal mode As String, Optional ByVal presetId As String = "default")
     On Error GoTo failed
 
     Dim sel As Range
@@ -115,7 +119,7 @@ Private Sub ApplySelectionEdit(ByVal instruction As String, ByVal mode As String
 
     Application.StatusBar = "DocMax：正在请求 DeepSeek…"
     Dim response As String
-    response = RequestEdit(original, beforeText, afterText, instruction, mode)
+    response = RequestEdit(original, beforeText, afterText, instruction, mode, presetId)
     Application.StatusBar = False
 
     If Len(response) = 0 Then
@@ -235,12 +239,14 @@ End Function
 ' ============================================================================
 
 Private Function RequestEdit(ByVal selectionText As String, ByVal beforeText As String, _
-    ByVal afterText As String, ByVal instruction As String, ByVal mode As String) As String
+    ByVal afterText As String, ByVal instruction As String, ByVal mode As String, _
+    ByVal presetId As String) As String
 
     Dim payload As String
     payload = "{" & _
         Q("instruction") & ":" & JsonQuote(instruction) & "," & _
         Q("mode") & ":" & JsonQuote(mode) & "," & _
+        Q("presetId") & ":" & JsonQuote(presetId) & "," & _
         Q("model") & ":" & JsonQuote(DEFAULT_MODEL) & "," & _
         Q("thinking") & ":" & JsonQuote(DEFAULT_THINKING) & "," & _
         Q("docTitle") & ":" & JsonQuote(ActiveDocument.Name) & "," & _
@@ -249,7 +255,8 @@ Private Function RequestEdit(ByVal selectionText As String, ByVal beforeText As 
             Q("before") & ":" & JsonQuote(beforeText) & "," & _
             Q("after") & ":" & JsonQuote(afterText) & "}}"
 
-    RequestEdit = HttpPostJson(API_EDIT, payload, 180000)
+    ' 不限制输出长度，给长文生成留足时间（服务端默认超时 10 分钟）
+    RequestEdit = HttpPostJson(API_EDIT, payload, 600000)
 End Function
 
 Private Function ServerHealthy() As Boolean

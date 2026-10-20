@@ -30,6 +30,7 @@ export const INITIAL_SESSION: EditSessionState = {
   thinking: 'off',
   modeChoice: 'auto',
   ask: false,
+  presetId: 'default',
   batch: { current: 0, total: 0 },
   reasoning: '',
   analysis: null,
@@ -247,6 +248,7 @@ export function useEditSession(): EditSessionApi {
         thinking: params.thinking,
         modeChoice: params.modeChoice,
         ask: params.ask,
+        presetId: params.presetId,
         batch: { current: 1, total: ranges.length },
         startedAt,
         elapsedMs: 0,
@@ -276,6 +278,7 @@ export function useEditSession(): EditSessionApi {
             model: params.model,
             thinking: params.thinking,
             mode,
+            presetId: params.presetId,
           });
           const request: EditRequest = {
             requestId: newRequestId(),

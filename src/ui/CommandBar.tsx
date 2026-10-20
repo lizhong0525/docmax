@@ -8,11 +8,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelId, ThinkingLevel } from '../core/types';
+import { PROMPT_PRESETS, getPromptPreset, type PromptPresetId } from '../core/presets';
 import type { DraftContext, HealthState, ModeChoice, RunParams } from './types';
 import { MODEL_OPTIONS, THINKING_OPTIONS, MODE_CHOICE_LABELS, describeMode, formatCount, BLOCK_LABELS } from './labels';
 import { clipHead, clipMiddle, clipTail } from './utils';
 
-const PRESETS: Array<{ id: string; label: string; instruction: string; ask?: boolean }> = [
+const QUICK_ACTIONS: Array<{ id: string; label: string; instruction: string; ask?: boolean }> = [
   { id: 'polish', label: '润色', instruction: '润色这段话，保持原意，让表达更自然、准确。' },
   { id: 'concise', label: '更简洁', instruction: '让这段文字更简洁，删掉冗余，保留关键信息。' },
   { id: 'expand', label: '扩写', instruction: '扩写这段文字，补充必要的细节，但不要偏离原意。' },
@@ -29,7 +30,7 @@ export interface CommandBarProps {
   busy: boolean;
   hasApiKey: boolean;
   serviceState: HealthState;
-  defaults: { model: ModelId; thinking: ThinkingLevel; modeChoice: ModeChoice };
+  defaults: { model: ModelId; thinking: ThinkingLevel; modeChoice: ModeChoice; presetId: PromptPresetId };
   limits: {
     maxSelectionChars: number;
     maxInstructionChars: number;
@@ -48,8 +49,10 @@ export function CommandBar(props: CommandBarProps) {
   const [model, setModel] = useState<ModelId>(props.defaults.model);
   const [thinking, setThinking] = useState<ThinkingLevel>(props.defaults.thinking);
   const [modeChoice, setModeChoice] = useState<ModeChoice>(props.defaults.modeChoice);
+  const [presetId, setPresetId] = useState<PromptPresetId>(props.defaults.presetId);
   const [ask, setAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activePreset = getPromptPreset(presetId);
 
   useEffect(() => {
     if (!open) return;
@@ -58,6 +61,7 @@ export function CommandBar(props: CommandBarProps) {
     setModel(props.defaults.model);
     setThinking(props.defaults.thinking);
     setModeChoice(props.defaults.modeChoice);
+    setPresetId(props.defaults.presetId);
     setAsk(false);
     const timer = window.setTimeout(() => textareaRef.current?.focus(), 30);
     return () => window.clearTimeout(timer);
@@ -83,14 +87,16 @@ export function CommandBar(props: CommandBarProps) {
 
   const selectionLimitExceeded = totalChars > props.limits.maxSelectionChars;
   const instructionLimitExceeded = instruction.length > props.limits.maxInstructionChars;
+  // 选了非默认提示词模式时可以不写指令（使用该模式的默认指令）；解释模式仍需问题
+  const canSubmitWithoutInstruction = presetId !== 'default' && !ask;
   const submitDisabled =
     busy ||
-    !instruction.trim() ||
+    (!instruction.trim() && !canSubmitWithoutInstruction) ||
     !props.hasApiKey ||
     selectionLimitExceeded ||
     instructionLimitExceeded;
 
-  const applyPreset = (preset: (typeof PRESETS)[number]) => {
+  const applyQuickAction = (preset: (typeof QUICK_ACTIONS)[number]) => {
     setInstruction(preset.instruction);
     setAsk(!!preset.ask);
     setError(null);
@@ -99,10 +105,11 @@ export function CommandBar(props: CommandBarProps) {
   };
 
   const submit = () => {
-    const text = instruction.trim();
+    const typed = instruction.trim();
+    const text = typed || (presetId !== 'default' && !ask ? activePreset.defaultInstruction : '');
     if (busy) return;
     if (!text) {
-      setError('先写一句指令，或点一个快捷标签');
+      setError('先写一句指令，或点一个快捷标签；也可以选一个提示词模式后直接提交');
       textareaRef.current?.focus();
       return;
     }
@@ -119,7 +126,7 @@ export function CommandBar(props: CommandBarProps) {
       return;
     }
     setError(null);
-    props.onSubmit({ instruction: text, model, thinking, modeChoice, ask });
+    props.onSubmit({ instruction: text, model, thinking, modeChoice, ask, presetId });
   };
 
   if (!open) return null;
@@ -159,12 +166,12 @@ export function CommandBar(props: CommandBarProps) {
         </div>
 
         <div className="command-chips" role="group" aria-label="快捷指令">
-          {PRESETS.map((preset) => (
+          {QUICK_ACTIONS.map((preset) => (
             <button
               key={preset.id}
               type="button"
               className={`chip${instruction === preset.instruction ? ' is-active' : ''}`}
-              onClick={() => applyPreset(preset)}
+              onClick={() => applyQuickAction(preset)}
               aria-pressed={instruction === preset.instruction}
               data-testid={`chip-${preset.id}`}
             >
@@ -246,6 +253,22 @@ export function CommandBar(props: CommandBarProps) {
         </details>
 
         <div className="command-options">
+          <label className="field field-preset">
+            <span>提示词</span>
+            <select
+              value={presetId}
+              onChange={(event) => setPresetId(event.target.value as PromptPresetId)}
+              data-testid="select-preset"
+              disabled={ask}
+              title={activePreset.description}
+            >
+              {PROMPT_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="field">
             <span>模型</span>
             <select value={model} onChange={(event) => setModel(event.target.value as ModelId)} data-testid="select-model">
@@ -287,6 +310,17 @@ export function CommandBar(props: CommandBarProps) {
             <span>{describeMode(resolvedMode)}</span>
           </div>
         </div>
+
+        {ask ? (
+          <p className="command-preset-hint" data-testid="preset-hint">
+            解释模式不使用提示词模式；直接提问即可。
+          </p>
+        ) : (
+          <p className="command-preset-hint" data-testid="preset-hint">
+            <strong>{activePreset.label}</strong>：{activePreset.description}
+            {!instruction.trim() && presetId !== 'default' ? ' 指令可以留空，直接提交即可。' : ''}
+          </p>
+        )}
 
         {draft && draft.docChars > props.limits.maxDocumentChars ? (
           <p className="command-warning">文档较长（超过 {formatCount(props.limits.maxDocumentChars)} 字），服务端会改用大纲 + 摘录作为上下文。</p>

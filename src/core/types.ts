@@ -8,6 +8,7 @@
  * - 提案（EditProposal）是「已通过服务端校验、可直接应用」的修改结果，
  *   绝不包含未经验证的模型原文。
  */
+import type { PromptPresetId } from './presets';
 
 export type ModelId = 'deepseek-flash' | 'deepseek-v4-pro';
 
@@ -89,6 +90,8 @@ export interface EditOptions {
   model: ModelId;
   thinking: ThinkingLevel;
   mode: EditMode;
+  /** 系统内置提示词模式（决定任务的系统级规则） */
+  presetId: PromptPresetId;
   /** 是否让模型先输出一段结构化识别结果（analysis） */
   analysis: boolean;
   /** 选区前后各取多少字符作为上下文 */

@@ -34,6 +34,7 @@ import type { Request, Response } from 'express';
 import { config, hasApiKey } from './config';
 import { executeEdit } from './editRoute';
 import { fnv1a32 } from '../src/core/selection';
+import { getPromptPreset } from '../src/core/presets';
 import type {
   EditMode,
   EditRequest,
@@ -74,9 +75,10 @@ export async function handleWordEdit(req: Request, res: Response): Promise<void>
   const selection = (body.selection ?? {}) as Record<string, unknown>;
   const instruction = asString(body.instruction).trim();
   const mode: EditMode = body.mode === 'ask' ? 'ask' : 'rewrite';
+  const preset = getPromptPreset(body.presetId);
   const selectionText = normalizeWordText(asString(selection.text));
 
-  if (!instruction) {
+  if (!instruction && (preset.id === 'default' || mode === 'ask')) {
     fail(res, 'empty-instruction', '请先输入修改指令。');
     return;
   }
@@ -118,11 +120,12 @@ export async function handleWordEdit(req: Request, res: Response): Promise<void>
     docText: contextDoc,
     docTitle: asString(body.docTitle),
     ranges: [range],
-    instruction,
+    instruction: instruction || preset.defaultInstruction,
     options: {
       model,
       thinking,
       mode,
+      presetId: preset.id,
       analysis: true,
       contextChars: 800,
       maxRewriteChars: 4000,
