@@ -8,8 +8,8 @@
 ![许可证](https://img.shields.io/badge/license-未声明-lightgrey)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A522-339933)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-V4.1%20Flash-4D6BFE)
-![Tests](https://img.shields.io/badge/tests-261%2F261-brightgreen)
-![E2E](https://img.shields.io/badge/E2E-12%2F12-brightgreen)
+![Tests](https://img.shields.io/badge/tests-269%2F269-brightgreen)
+![E2E](https://img.shields.io/badge/E2E-13%2F13-brightgreen)
 
 ![审阅面板：本地识别 + 模型识别 + 词级 diff](docs/screenshots/03-review-diff.png)
 
@@ -46,16 +46,23 @@
 - 词级 diff（CJK 友好）+ 分级警告；红色警告（截断/上下文泄漏）需二次确认
 - 接受、拒绝、重新生成、过期快照保护；接受后可一步撤销
 
+**文档库与留痕（v0.4.0 新增）**
+- **新建文档**：文档库一键新建；每个文档独立的磁盘子文件夹
+- 文档库：打开 / 切换 / 重命名 / 删除（移入 `trash/` 回收站）/ 在资源管理器打开文件夹
+- 自动保存到文档库（1.2 秒防抖），每次内容变化生成不可变版本快照（`revisions/`）
+- **审阅 / 留痕**：追加式 `audit.jsonl` 记录创建、每次保存、AI 提案 / 接受 / 拒绝、重命名、导入、回滚；可查看版本 diff、一键回滚、导出留痕 JSON
+- AI 提案即使被拒绝也会留痕；删除文档只移入回收站，历史与留痕全部保留
+
 **Word 导入**
 - 顶栏「导入 Word」：`.docx` → 标准 Markdown，语义保留标题/列表/表格/链接/引用/代码块
 - 图片不导出，替换为可读占位符，避免 Markdown 体积爆炸
-- 转换前展示摘要与预览，确认后替换当前文档
+- 转换前展示摘要与预览，确认后创建为新文档（旧文档完整保留在文档库）
 - 同样的转换能力可脱离界面使用：`pnpm docx2md` CLI 或 `POST /api/import/docx`
 
 **工程与质量**
 - 前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换
 - 服务端唯一持有 API Key；文档仅发送给 DeepSeek
-- 261 个单元测试、30 例真实模型评测、12 个 Playwright E2E、完整验证报告
+- 269 个单元测试、30 例真实模型评测、13 个 Playwright E2E、完整验证报告
 
 ## 截图
 
@@ -63,8 +70,10 @@
 | --- | --- |
 | ![选区识别 + 指令条](docs/screenshots/02-command-payload.png) | ![审阅面板（词级 diff）](docs/screenshots/03-review-diff.png) |
 | **选区识别 + 指令条**：块类型、词边界、payload 快照 | **审阅面板**：本地识别、模型识别、词级 diff、token |
+| ![文档库](docs/screenshots/11-doc-library.png) | ![审阅留痕时间线](docs/screenshots/12-history-timeline.png) |
+| **文档库**：每个文档一个子文件夹，新建 / 切换 / 重命名 / 删除 | **审阅 · 留痕**：AI 提案 / 接受 / 保存 / 版本时间线 |
 | ![深色模式](docs/screenshots/04-dark.png) | ![Word 导入](docs/screenshots/07-docx-import.png) |
-| **深色模式**：纸感深色 + 朱砂强调色 | **Word 导入**：摘要、预览、替换确认 |
+| **深色模式**：纸感深色 + 朱砂强调色 | **Word 导入**：摘要、预览、创建新文档 |
 
 ## 快速开始
 
@@ -87,6 +96,7 @@ PORT=5199                                   # 可选
 DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
 DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
 DOCMAX_TIMEOUT_MS=600000                    # 可选：单次生成超时（默认 10 分钟）
+DOCMAX_DATA_DIR=D:\DocMaxData               # 可选：文档库根目录（默认开发版 ./data，安装版「文档\DocMax」）
 ```
 
 生产运行：
@@ -131,7 +141,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 - 安装界面可填写 DeepSeek API Key（留空也能稍后在安装目录的 `.env` 中配置）；
 - 创建桌面 / 开始菜单快捷方式（无控制台窗口启动）；
 - 检测到 Word 时自动安装 Word 加载项（重启 Word 后出现 DocMax 选项卡）；
-- 在 Windows「设置 → 应用」中提供标准卸载；卸载时会把 `.env` 备份到 `%USERPROFILE%\DocMax.env.bak`。
+- 在 Windows「设置 → 应用」中提供标准卸载；卸载时会把 `.env` 备份到 `%USERPROFILE%\DocMax.env.bak`，**文档库（`文档\DocMax`）会保留**。
 
 说明：安装包未做代码签名，Windows SmartScreen 可能提示，选择「更多信息 → 仍要运行」即可；安装包内为生产构建，代码更新后重新运行构建脚本生成新包。
 
@@ -146,6 +156,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 - 等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告
 - `Ctrl/⌘ Enter` 接受（一次性应用），`Esc` 放弃
 - 接受后按 `Ctrl/⌘ Z`，**一步撤销**回到修改前
+- 所有编辑自动保存到文档库（每个文档一个子文件夹）；顶栏「审阅」可查看全程留痕、版本 diff 与回滚
 
 常用快捷键：
 
@@ -184,13 +195,54 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 - **不限制输出长度**：服务端不发送 `max_tokens`，长文不会被 1K/2K 的人为上限截断；生成超时默认 10 分钟，可用 `DOCMAX_TIMEOUT_MS` 调整；
 - 解释模式不使用提示词模式，只回答问题。
 
+## 文档库与审阅（全程留痕）
+
+顶栏新增三个入口：**文档**（文档库）、**新建**、**审阅**。
+
+### 每个文档一个子文件夹
+
+文档库保存在磁盘上，可直接用资源管理器查看/备份：
+
+```
+<数据目录>/
+  docs/
+    doc-20261020-221500-ab12cd/     ← 每个文档独立子文件夹
+      document.md                   当前内容
+      meta.json                     标题 / 时间 / 版本数 / 字符数 / hash
+      revisions/000001.md …         不可变版本快照（每次内容变化新增）
+      revisions.json                版本元数据
+      audit.jsonl                   追加式留痕（永不修改历史行）
+  trash/                            删除的文档（整文件夹移入，留痕保留）
+```
+
+- 数据目录：开发模式为项目下 `data/`；安装版为 `%USERPROFILE%\Documents\DocMax`；可用 `DOCMAX_DATA_DIR` 覆盖；
+- 文档库支持新建、打开、切换、重命名、删除（移入 `trash/`）、「文件夹」按钮直接在资源管理器打开；
+- 每个文档的标题、版本、留痕互相隔离，删除/移动项目不影响其他文档。
+
+### 新建 / 自动保存 / 版本
+
+- 顶栏「新建」或文档库「新建文档」创建空白文档并立即切换；
+- 编辑后 **1.2 秒防抖自动保存**到文档库；每次内容变化产生一个版本；相同内容不重复建版本；
+- `Ctrl/⌘ S` 手动保存（生成新版本；若绑定了本地文件则同时写回文件）；
+- 导入 `.docx` / 打开本地 `.md` 会**创建为新文档**，原文档完整保留。
+
+### 审阅与留痕
+
+点顶栏「审阅」打开时间线：
+
+- 留痕事件：创建、每次保存、AI 提案、AI 接受、AI 拒绝、重命名、导入、回滚、删除；
+- **AI 提案即使被拒绝也记录**（指令、模型、提示词模式、选区前后文本、警告）；
+- 事件按版本查看前后 diff；可一键回滚到任意版本（回滚本身也生成新版本并留痕，不丢失当前内容）；
+- 「导出留痕 JSON」可导出该文档完整事件与版本元数据；
+- 删除只移入 `trash/`，不会物理删除任何版本/留痕。
+
 ## 从 Word 导入（docx → Markdown）
 
 Word 文档不想手动重排？点顶栏 **「导入 Word」**，选择 `.docx`，DocMax 会先在本地转换：
 
 - **标题 / 段落 / 粗体 / 斜体 / 列表 / 表格 / 链接 / 引用 / 代码块**按 Word 样式语义转换为标准 Markdown；
 - **图片不导出**：转换为可读占位符 `> [图片占位 N：image/png，未导出图片文件]`（避免 base64 让 md 体积爆炸），转换前可预览；
-- 转换完成后先展示摘要与 Markdown 预览，确认后**替换当前文档**（请先保存用不到的旧内容），再按 `Ctrl/⌘ S` 保存为 `.md`；
+- 转换完成后先展示摘要与 Markdown 预览，确认后**创建为新文档**（旧文档完整保留在文档库）；
 - 文件大小上限默认 25 MB，可用 `DOCMAX_MAX_DOCX_BYTES` 调整。
 
 同样的转换能力也可以脱离界面直接用命令行：
@@ -271,14 +323,15 @@ Node 单进程（Express 5 + Vite middleware）
 
 | 项目 | 结果 |
 | --- | --- |
-| 核心单元测试 | **261 / 261 通过**（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 `max_tokens`） |
+| 核心单元测试 | **269 / 269 通过**（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 `max_tokens` + 文档库/版本/留痕 8 项） |
 | 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
 | 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
 | 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
 | 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
 | 长输出 / 无限制 | 单次实测 **2352 字**、`completionTokens=1367`（旧 1024 token 上限会截断），`truncated=false` |
 | 结构重写模式 | 真实模型输出保留标题/列表/表格结构，并为 4 处缺口生成 `（需补充：…）`，未编造事实 |
-| `E2E（真实 Chrome + 真实 DeepSeek）` | **12 / 12 通过**：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式（空指令提交）+ docx 导入替换/取消/图片占位/错误处理 |
+| 文档库 / 留痕 | 每个文档独立子文件夹；保存生成不可变版本；相同内容不重复建版本；AI 提案/接受/拒绝、重命名、回滚、删除全部追加式留痕；删除移入 `trash/` 保留历史 |
+| `E2E（真实 Chrome + 真实 DeepSeek）` | **13 / 13 通过**：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式 + **新建文档/自动保存/审阅留痕/版本 diff/回滚/切回文档** + docx 导入 |
 | Word 加载项 | 构建/安装成功；VBA 自检 + **隐藏 Word 文档中的选区替换**自检通过（真实 DeepSeek，0.7–1.1s）；新增「结构重写」按钮 |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
@@ -324,6 +377,13 @@ node node_modules/@playwright/test/cli.js test
 | `POST /api/edit` | 选区编辑，SSE 流：`meta → status → reasoning/delta → proposal → done`；`options.presetId` 选择系统提示词模式 |
 | `POST /api/word/edit` | Word 加载项专用，一次性 JSON；同样支持 `presetId`，不限制输出长度 |
 | `POST /api/import/docx` | 请求体为 `.docx` 二进制，返回 Markdown + 统计 + 警告 |
+| `GET/POST /api/docs` | 文档列表 / 新建文档（每个文档独立子文件夹） |
+| `GET/PUT/PATCH/DELETE /api/docs/:id` | 打开 / 保存（生成版本）/ 重命名 / 移入 trash |
+| `GET /api/docs/:id/history` | 追加式留痕事件 + 版本列表 |
+| `GET /api/docs/:id/revisions/:rev` | 读取历史版本内容（用于 diff / 回滚） |
+| `POST /api/docs/:id/restore` | 回滚到指定版本（生成新版本并留痕） |
+| `POST /api/docs/:id/audit` | 追加 AI 提案/拒绝等非内容事件 |
+| `POST /api/docs/:id/reveal` | 在资源管理器中打开该文档的文件夹 |
 
 ## 项目结构
 
@@ -337,19 +397,25 @@ src/core/          前后端共享的纯 TS 核心
   apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
   diff.ts          CJK 友好的词级 diff
   presets.ts       系统内置提示词模式（默认 / 结构重写·括号补全 / 精简 / 扩写 / …）
+  docs.ts          文档库共享契约（摘要/详情/版本/留痕事件）
   protocol.ts      SSE 编码、公开配置
   client.ts        浏览器端 SSE 客户端
 server/            Node/Express 服务（唯一持有 API Key 的进程）
   deepseek.ts      DeepSeek 流式客户端 + 错误映射
   editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
   wordRoute.ts     /api/word/edit：Word 插件专用，一次性 JSON 返回
+  docStore.ts      文档库存储：子文件夹、版本快照、audit.jsonl 留痕、原子写
+  docsRoute.ts     /api/docs：新建/保存/版本/回滚/审计/打开文件夹
   docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
   index.ts         单进程：API + Vite middleware / dist 静态文件
-src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层、文档库、审阅留痕）
+  docApi.ts        文档库 HTTP 客户端
+  DocumentLibrary.tsx  文档库（新建/打开/重命名/删除/文件夹）
+  HistoryPanel.tsx     审阅留痕时间线（diff / 回滚 / 导出）
 word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
 installer/         Windows 安装包（NSIS 脚本、自包含运行时构建、启动器）
-tests/             vitest 单元测试（含 docx 转换与测试夹具）
-e2e/               Playwright 测试（AI 编辑 + docx 导入）
+tests/             vitest 单元测试（含 docx 转换、文档库存储与测试夹具）
+e2e/               Playwright 测试（AI 编辑 + docx 导入 + 文档库/留痕）
 scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
 assets/            桌面快捷方式图标（docmax.ico）
 docs/             HTML 项目主页与截图
@@ -360,6 +426,7 @@ docs/             HTML 项目主页与截图
 - API Key 只存在于服务端 `.env`（已 gitignore），不会下发到浏览器；
 - 服务默认只监听 `127.0.0.1`；
 - 文档内容仅发送给 DeepSeek API，不经过其他第三方；
+- 文档库只写入本机数据目录（开发版 `data/`、安装版「文档\DocMax」），不经过任何网络；
 - 文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；
 - Word 转换禁用外部文件访问，并过滤 `javascript:` / `data:` / `file:` 等危险链接；
 - Word 加载项只访问本机 `127.0.0.1`，源码在仓库内可审计，构建后安装到 STARTUP。
@@ -371,6 +438,8 @@ docs/             HTML 项目主页与截图
 - 不发送 `max_tokens`，但输出仍受模型/服务端的默认上限约束；超长输出可能遇到模型侧上限（此时会给出截断警告，不会静默应用）；
 - 仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；
 - 协同编辑 / 云同步未实现（本地优先是有意选择）；
+- 自动保存按 1.2 秒防抖产生版本，频繁编辑/长文会生成较多版本文件（目前不自动清理；可备份/手动归档 `revisions/`）；
+- 文档库是单机文件存储，不支持多进程同时写同一文档（服务端已按文档串行化写操作）；
 - Word 导入为语义转换，不保证版式级还原（详见上文限制）。
 
 ## 许可

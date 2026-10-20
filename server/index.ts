@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { config, hasApiKey, PROJECT_ROOT } from './config';
 import { handleEdit } from './editRoute';
 import { handleWordEdit } from './wordRoute';
+import { docsRouter } from './docsRoute';
 import { convertDocxToMarkdown, DocxConversionError } from './docx';
 import { publicConfig } from '../src/core/protocol';
 
@@ -41,6 +42,9 @@ app.post('/api/edit', (req, res) => {
 app.post('/api/word/edit', (req, res) => {
   void handleWordEdit(req, res);
 });
+
+/** 文档库：每个文档一个子文件夹（document.md + revisions + audit.jsonl） */
+app.use('/api/docs', docsRouter);
 
 const DOCX_MIME = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

@@ -2,6 +2,7 @@
  * 服务端配置：读取 .env / 环境变量。API Key 只在服务端使用，绝不下发到浏览器。
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ModelId, ThinkingLevel } from '../src/core/types';
@@ -11,6 +12,14 @@ import { APP_VERSION, DEFAULT_LIMITS } from '../src/core/protocol';
 export const PROJECT_ROOT = process.env.DOCMAX_ROOT
   ? resolve(process.env.DOCMAX_ROOT)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * 文档库根目录（在 loadDotEnv 之后赋值）：
+ * - 安装版：%USERPROFILE%\Documents\DocMax（用户可见、可备份）
+ * - 源码运行：项目下的 data/（已 gitignore）
+ * - 显式 DOCMAX_DATA_DIR 优先
+ */
+export let DATA_DIR = '';
 
 /** 极简 .env 解析（不引入 dotenv 依赖） */
 function loadDotEnv(): void {
@@ -33,6 +42,12 @@ function loadDotEnv(): void {
 
 loadDotEnv();
 
+DATA_DIR = process.env.DOCMAX_DATA_DIR
+  ? resolve(process.env.DOCMAX_DATA_DIR)
+  : process.env.DOCMAX_ROOT
+    ? join(homedir(), 'Documents', 'DocMax')
+    : join(PROJECT_ROOT, 'data');
+
 function pickModel(value: string | undefined): ModelId {
   return value === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash';
 }
@@ -46,6 +61,7 @@ export const config = {
   baseUrl: (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, ''),
   defaultModel: pickModel(process.env.DOCMAX_MODEL),
   defaultThinking: (process.env.DOCMAX_THINKING as ThinkingLevel) || 'off',
+  dataDir: DATA_DIR,
   /** 单次请求总超时：不限制输出长度时，长文生成可能持续数分钟 */
   requestTimeoutMs: Number(process.env.DOCMAX_TIMEOUT_MS || 600_000),
   /** 上游首个字节超时 */

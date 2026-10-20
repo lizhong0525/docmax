@@ -12,6 +12,7 @@ e2e/.artifacts/
 playwright-report/
 
 .vitest/
+data/
 word-addin/build/
 installer/staging/
 installer/dist/

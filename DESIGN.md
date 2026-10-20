@@ -353,7 +353,7 @@ installer/staging/
 
 - staging 内 `node.exe server.mjs --prod` 冒烟：健康检查、首页 200、`/api/word/edit` 真实 DeepSeek 调用通过；
 - 静默测试安装到临时目录：文件/`.env`/卸载器齐全 → 安装版应用启动并完成真实 AI 请求 → `uninstall.exe /S` 完全删除目录；
-- 正式安装到 `%LOCALAPPDATA%\DocMax`：快捷方式、注册表卸载项、Word 加载项均就位；通过安装版启动器启动，健康检查显示 `version=0.3.0`、`mode=production`，页面 200；
+- 正式安装到 `%LOCALAPPDATA%\DocMax`：快捷方式、注册表卸载项、Word 加载项均就位；通过安装版启动器启动，健康检查显示 `version=0.4.0`、`mode=production`，页面 200；
 - 安装版 Word 加载项自检（API + 隐藏文档选区替换）通过。
 
 ### 9.5 限制
@@ -397,12 +397,64 @@ Word 加载项新增「结构重写」Ribbon 按钮，VBA 请求体带 `presetId
 
 ### 10.3 验证
 
-- 261 个单元测试（新增提示词目录、prompt 注入、空指令回退、请求体无输出上限）；
+- 269 个单元测试（提示词目录、prompt 注入、空指令回退、请求体无输出上限、文档库/版本/留痕）；
 - `/api/word/edit` API 自检新增预设模式用例；
-- 12 个 Playwright E2E（新增「结构重写：指令留空也能提交并应用」）；
+- 13 个 Playwright E2E（新增「结构重写：指令留空也能提交并应用」「新建文档 → 自动保存 → 审阅留痕 → 版本 diff → 回滚 → 切换文档」）；
 - 长输出与结构重写各跑一次真实 DeepSeek 请求，数据见上。
 
-## 11. 已知限制与后续方向
+## 11. 文档库、版本与全程留痕
+
+### 11.1 为什么是「每文档一个子文件夹」
+
+单文件 localStorage 无法表达「一个编辑器里有多篇文档、每篇都有历史和留痕」。v0.4.0 引入服务端文档库：**每个文档是磁盘上一个独立子文件夹**，内容、版本、审计、元数据互不干扰，用户可以直接备份/拷贝单个文件夹。
+
+```
+<dataDir>/docs/<docId>/
+  document.md          当前内容
+  meta.json            标题/时间/版本数/字符数/内容 hash
+  revisions/000001.md  不可变版本（每次内容变化一版）
+  revisions.json       版本元数据（source/note/chars/hash）
+  audit.jsonl          追加式留痕（只 append，永不改历史行）
+<dataDir>/trash/<docId>-<ts>/  删除的整文件夹（留痕保留）
+```
+
+数据目录解析顺序：`DOCMAX_DATA_DIR` → 安装版（设置了 `DOCMAX_ROOT`）用 `%USERPROFILE%\Documents\DocMax` → 源码模式用项目 `data/`（已 gitignore）。
+
+### 11.2 版本与留痕策略
+
+- **版本**：内容变化才产生新版本；内容相同重复保存返回 `unchanged`；只改标题不产生版本。
+- **自动保存**：客户端 1.2s 防抖调用 `PUT /api/docs/:id`，source=`auto-save`；手动 Ctrl+S source=`manual-save`；AI 接受 source=`ai-accept`；导入 source=`import-*`；回滚 source=`restore`。
+- **留痕**：`audit.jsonl` 追加写，事件包括 `doc-created / doc-saved / doc-renamed / doc-opened / ai-proposal / ai-accepted / ai-rejected / docx-imported / markdown-imported / version-restored / doc-deleted`。
+- **AI 提案即使被拒绝也留痕**：提案到达时客户端就 POST `/audit`（指令、模型、presetId、选区前后文本、warnings），接受/拒绝再追加结果事件；因此可以回看「模型当时提了什么、我为什么没要」。
+- **不可变**：版本文件与审计行不修改；回滚也是「把旧内容作为新版本写入」，不会丢掉当前版本。
+- **删除**：整文件夹移入 `trash/`，不做物理删除；审计里记录 `trashedTo`。
+
+写入可靠性：单文档内存锁串行化保存；`document.md`/版本/JSON 用「临时文件 + rename」原子替换；审计 `appendFileSync`；详情字段递归截断（单字符串 4k、总 JSON 24k），避免审计无限膨胀。
+
+### 11.3 API 与安全
+
+`/api/docs` 提供列表、新建、读取、保存、重命名、删除、历史、版本内容、回滚、追加审计、打开文件夹。所有路由只接受 `isDocId()` 校验过的 id，并 resolve 后检查仍在 docs 根目录内，防止路径穿越；`reveal` 只接受文档 id 并调用系统文件管理器打开对应文件夹（本机限定）。
+
+文档库只写本地数据目录，不经过第三方；浏览器只与本机 `127.0.0.1` 通信。
+
+### 11.4 UI
+
+- **文档库**：新建输入框、列表（标题/时间/字数/版本数/当前文档）、打开、重命名、删除、文件夹、复制数据目录路径；
+- **审阅 · 留痕**：右侧抽屉时间线，支持按全部 / AI 修改 / 版本筛选；事件可展开查看指令/模型/提示词模式/前后 diff；版本事件可「对比版本内容」（复用词级 DiffView）和「回滚」；导出完整留痕 JSON；
+- 顶栏显示同步状态（同步中/已同步/文档库离线）与当前版本号；文档切换、导入 Markdown/Word 都会创建新文档，旧文档完整保留。
+
+### 11.5 验证
+
+- 8 个文档库单测：子文件夹布局、版本/相同内容去重、重命名只留痕、回滚、AI 事件追加、删除入 trash、路径穿越拒绝、列表排序；
+- `/api/docs` 自检覆盖新建→保存→重复保存→重命名→审计→历史→版本→回滚→删除全链路；
+- 13 个 E2E 中的「文档库与审阅留痕」真实浏览器覆盖新建、自动保存、AI 提案/接受留痕、版本 diff、回滚、切换文档；
+- 截图：`docs/screenshots/11-doc-library.png`、`12-history-timeline.png`、`13-history-diff.png`。
+
+### 11.6 限制
+
+单进程/单机存储（本机服务串行化写同一文档）；不自动清理历史版本/trash；没有加密与访问控制（依赖本地单用户环境）；版本以全文快照存储，超长文档会产生较大磁盘占用。
+
+## 12. 已知限制与后续方向
 
 - 多选区目前串行逐区处理（v1：主选区优先），并行 + 合并为一个事务是可做的下一步；
 - surgical 模式对「同一短句在选区内重复」仍可能触发一次修复重试（已有 FIND_ALL 支持，长重复文本一次通过率待评测数据）；

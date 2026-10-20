@@ -1,7 +1,7 @@
 {
   "name": "docmax",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DocMax — 极简 Markdown 编辑器，深度集成 DeepSeek 的选区识别与精准替换",
   "type": "module",
   "engines": {

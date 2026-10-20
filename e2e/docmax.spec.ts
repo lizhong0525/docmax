@@ -270,6 +270,85 @@ test.describe('系统提示词模式', () => {
   });
 });
 
+test.describe('文档库与审阅留痕', () => {
+  test('新建文档 → 自动保存 → AI 接受 → 留痕与版本对比 → 回滚', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('[data-testid="sync-status"]')).toBeVisible({ timeout: 20_000 });
+    const title = `E2E 文档 ${Date.now()}`;
+
+    // 通过文档库新建带标题的文档
+    await page.locator('[data-testid="open-library"]').click();
+    await expect(page.locator('[data-testid="doc-library"]')).toBeVisible();
+    await expect(page.locator('[data-testid="docs-root"]')).toContainText('docs');
+    await page.locator('[data-testid="new-doc-title"]').fill(title);
+    await page.locator('[data-testid="new-doc"]').click();
+    await expect(page.locator('[data-testid="doc-library"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="doc-title"]')).toHaveValue(title);
+
+    // 编辑内容 → 自动保存到文档库（产生版本与留痕）
+    await setDocument(
+      page,
+      '这个功能目前有一个问题，就是当用户点击按钮以后页面会一直卡住不动，我们需要尽快修复它。\n\n第二段保持不变。\n',
+    );
+    await expect(page.locator('[data-testid="doc-sync"]')).toContainText('已同步', { timeout: 30_000 });
+    await expect(page.locator('[data-testid="file-meta"]')).toContainText('留痕已开启');
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-doc-library-saved.png` });
+
+    // 真实 AI 修改，接受后写入留痕
+    await selectLine(page, 0);
+    await openCommandBar(page);
+    await submitInstruction(page, POLISH_INSTRUCTION);
+    await waitForProposal(page);
+    await page.locator('[data-testid="accept"]').click();
+    await waitReviewClosed(page);
+    await expect(page.locator('[data-testid="doc-sync"]')).toContainText('已同步', { timeout: 30_000 });
+
+    // 打开审阅 / 留痕面板
+    await page.locator('[data-testid="open-history"]').click();
+    await expect(page.locator('[data-testid="history-panel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="audit-ai-proposal"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="audit-ai-accepted"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="audit-doc-saved"]').first()).toBeVisible();
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-history-timeline.png` });
+
+    // 展开 AI 接受事件 → 查看版本对比
+    await page.locator('[data-testid="audit-ai-accepted"]').first().locator('.audit-summary').click();
+    const diffButton = page.locator('[data-testid^="audit-diff-"]').first();
+    await expect(diffButton).toBeVisible();
+    await diffButton.click();
+    await expect(page.locator('[data-testid="history-diff"]')).toBeVisible({ timeout: 20_000 });
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-history-diff.png` });
+
+    // 展开一个保存事件 → 回滚到版本 2（AI 修改前）
+    await page.locator('[data-testid="audit-doc-saved"]').first().locator('.audit-summary').click();
+    const restoreButton = page.locator('[data-testid="audit-restore-2"]');
+    if ((await restoreButton.count()) > 0) {
+      page.once('dialog', (dialog) => void dialog.accept());
+      await restoreButton.click();
+      await expect(page.locator('[data-testid="toast"]')).toContainText('已回滚', { timeout: 20_000 });
+    }
+
+    // 文档库：子文件夹路径、列表包含该文档
+    await page.locator('[aria-label="关闭审阅面板"]').click();
+    await page.locator('[data-testid="open-library"]').click();
+    await expect(page.locator('[data-testid="doc-library"]')).toBeVisible();
+    await expect(page.locator('[data-testid="doc-list"]')).toContainText(title);
+    await expect(page.locator('[data-testid="docs-root"]')).toContainText('docs');
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-doc-library.png` });
+
+    // 新建第二个文档并切回第一个，验证文件管理
+    const secondTitle = `${title} · 二`;
+    await page.locator('[data-testid="new-doc-title"]').fill(secondTitle);
+    await page.locator('[data-testid="new-doc"]').click();
+    await expect(page.locator('[data-testid="doc-title"]')).toHaveValue(secondTitle);
+    await page.locator('[data-testid="open-library"]').click();
+    await expect(page.locator('[data-testid="doc-list"]')).toContainText(secondTitle);
+    await expect(page.locator('[data-testid="doc-list"]')).toContainText(title);
+    await page.locator('.lib-doc-title').filter({ hasText: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).click();
+    await expect(page.locator('[data-testid="doc-title"]')).toHaveValue(title);
+  });
+});
+
 test.describe('响应式布局', () => {
   test('窄屏下指令条可用且截图留档', async ({ page }) => {
     await page.setViewportSize({ width: 520, height: 900 });

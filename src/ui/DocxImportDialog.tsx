@@ -129,7 +129,7 @@ export function DocxImportDialog({ state, maxBytes, hasExistingDoc, onCancel, on
 
             {hasExistingDoc ? (
               <p className="docx-warning-replace">
-                导入会替换当前文档。如需保留当前内容，请先取消并保存（Ctrl/⌘ S）。
+                导入会创建为新文档，当前文档会完整保留在文档库中（含版本与留痕）。
               </p>
             ) : null}
 
@@ -144,7 +144,7 @@ export function DocxImportDialog({ state, maxBytes, hasExistingDoc, onCancel, on
                 onClick={onConfirm}
                 data-testid="docx-import-confirm"
               >
-                替换当前文档
+                创建新文档并打开
               </button>
             </div>
           </div>

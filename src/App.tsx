@@ -16,6 +16,7 @@ import { applyProposals } from './core/apply';
 import { analyzeSelection, buildRangeSnapshot } from './core/selection';
 import { DEFAULT_LIMITS } from './core/protocol';
 import { getPromptPreset, type PromptPresetId } from './core/presets';
+import type { DocDetail, DocSummary, RevisionSource } from './core/docs';
 import type { EditProposal, ModelId, ThinkingLevel } from './core/types';
 import { CodeMirrorEditor, type CodeMirrorEditorHandle } from './ui/CodeMirrorEditor';
 import { SelectionStatus } from './ui/SelectionStatus';
@@ -24,7 +25,10 @@ import { ReviewPanel } from './ui/ReviewPanel';
 import { MarkdownPreview } from './ui/Preview';
 import { HelpOverlay } from './ui/HelpOverlay';
 import { useEditSession, type SessionContext } from './ui/useEditSession';
-import { IconClose, IconEdit, IconFolder, IconHelp, IconMoon, IconPreview, IconSave, IconSun, IconWord } from './ui/Icons';
+import { docApi } from './ui/docApi';
+import { DocumentLibrary } from './ui/DocumentLibrary';
+import { HistoryPanel } from './ui/HistoryPanel';
+import { IconBraces, IconClose, IconEdit, IconFolder, IconHelp, IconMoon, IconPreview, IconSave, IconSparkle, IconSun, IconWord } from './ui/Icons';
 import { DocxImportDialog, type DocxImportState } from './ui/DocxImportDialog';
 import { importDocx, pickDocxFile } from './ui/docxImport';
 import type {
@@ -42,9 +46,11 @@ import {
   formatClock,
   initialDocument,
   isEditableTarget,
+  loadActiveDocId,
   loadPrefs,
   loadTheme,
   oneLine,
+  storeActiveDocId,
   storeDoc,
   storePrefs,
   storeTheme,
@@ -89,6 +95,20 @@ export function App() {
   const [docxImport, setDocxImport] = useState<DocxImportState | null>(null);
   const [confirmAccept, setConfirmAccept] = useState(false);
   const [staleOverride, setStaleOverride] = useState<string | null>(null);
+
+  /* 文档库 / 留痕 */
+  const [docList, setDocList] = useState<DocSummary[]>([]);
+  const [docsRoot, setDocsRoot] = useState('');
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<'local' | 'saving' | 'synced' | 'error'>('local');
+  const [revisionCount, setRevisionCount] = useState(0);
+
   const [prefs, setPrefs] = useState<{
     model: ModelId;
     thinking: ThinkingLevel;
@@ -111,6 +131,16 @@ export function App() {
   const lastParamsRef = useRef<RunParams | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const docxFileRef = useRef<File | null>(null);
+  const activeDocIdRef = useRef<string | null>(null);
+  const lastSavedRef = useRef<{ content: string; title: string } | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const saveInFlightRef = useRef(false);
+  const pendingSaveRef = useRef(false);
+  const persistDocRef = useRef<(source: RevisionSource, extra?: { detail?: Record<string, unknown>; note?: string; force?: boolean }) => Promise<void>>(
+    async () => undefined,
+  );
+  const bootstrappedRef = useRef(false);
+  const proposalLoggedRef = useRef<string | null>(null);
   const session = useEditSession();
   const sessionState = session.state;
 
@@ -180,6 +210,262 @@ export function App() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), 4200);
   }, []);
+
+  /* ------------------------------- 文档库 / 留痕 ------------------------------ */
+
+  const refreshDocs = async (): Promise<DocSummary[]> => {
+    try {
+      const data = await docApi.list();
+      setDocList(data.docs);
+      setDocsRoot(data.root);
+      setDocsError(null);
+      return data.docs;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setDocsError(message);
+      return [];
+    }
+  };
+
+  const applyDocContent = (doc: DocDetail): void => {
+    activeDocIdRef.current = doc.id;
+    docRef.current = doc.content;
+    titleRef.current = doc.title;
+    lastSavedRef.current = { content: doc.content, title: doc.title };
+    setActiveDocId(doc.id);
+    storeActiveDocId(doc.id);
+    setTitle(doc.title);
+    setStableDoc(doc.content);
+    docRevRef.current += 1;
+    setDocEpoch((epoch) => epoch + 1);
+    editorRef.current?.resetDoc(doc.content, 0);
+    setSelection(null);
+    session.reset();
+    setPaneMode('edit');
+    setSyncState('synced');
+    setRevisionCount(doc.revisionCount);
+    setSavedAt(new Date(doc.updatedAt).getTime());
+    storeDoc({ title: doc.title, text: doc.content, updatedAt: Date.now() });
+  };
+
+  const persistDoc = async (
+    source: RevisionSource,
+    extra?: { detail?: Record<string, unknown>; note?: string; force?: boolean },
+  ): Promise<void> => {
+    const id = activeDocIdRef.current;
+    if (!id) return;
+    const content = docRef.current;
+    const title = titleRef.current;
+    const last = lastSavedRef.current;
+    if (!extra?.force && last && last.content === content && last.title === title) return;
+    if (saveInFlightRef.current) {
+      pendingSaveRef.current = true;
+      return;
+    }
+    saveInFlightRef.current = true;
+    setSyncState('saving');
+    try {
+      const result = await docApi.save(id, {
+        content,
+        title,
+        source,
+        note: extra?.note,
+        detail: extra?.detail,
+      });
+      if (activeDocIdRef.current === id) lastSavedRef.current = { content, title };
+      setSyncState('synced');
+      setSavedAt(Date.now());
+      setRevisionCount(result.doc.revisionCount);
+      setDocList((previous) => {
+        if (!previous.some((entry) => entry.id === result.doc.id)) return previous;
+        return previous
+          .map((entry) => (entry.id === result.doc.id ? result.doc : entry))
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      });
+      setHistoryRefreshKey((key) => key + 1);
+    } catch (error) {
+      setSyncState('error');
+      if (source !== 'auto-save') showToast(`文档库保存失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      saveInFlightRef.current = false;
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        window.setTimeout(() => {
+          void persistDocRef.current('auto-save');
+        }, 0);
+      }
+    }
+  };
+  persistDocRef.current = persistDoc;
+
+  const flushSave = async (source: RevisionSource = 'manual-save'): Promise<void> => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    await persistDoc(source);
+  };
+
+  const openDocById = async (id: string, options?: { silent?: boolean }): Promise<void> => {
+    try {
+      setDocsLoading(true);
+      await flushSave();
+      const { doc } = await docApi.get(id);
+      applyDocContent(doc);
+      await refreshDocs();
+      setLibraryOpen(false);
+      setHistoryRefreshKey((key) => key + 1);
+      void docApi.audit(id, { type: 'doc-opened', summary: '打开文档' }).catch(() => undefined);
+      if (!options?.silent) showToast(`已打开「${oneLine(doc.title, 24)}」`);
+    } catch (error) {
+      showToast(`打开文档失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  const createNewDocument = async (title?: string): Promise<void> => {
+    try {
+      await flushSave();
+      const finalTitle = (title ?? '').trim() || `未命名文档 ${formatClock(Date.now())}`;
+      const created = await docApi.create({ title: finalTitle, content: '' });
+      applyDocContent(created.doc);
+      await refreshDocs();
+      setLibraryOpen(false);
+      setHistoryRefreshKey((key) => key + 1);
+      showToast(`已新建「${finalTitle}」`);
+    } catch (error) {
+      showToast(`新建文档失败：${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  };
+
+  const renameDocument = async (id: string, title: string): Promise<void> => {
+    const result = await docApi.rename(id, title);
+    if (activeDocIdRef.current === id) {
+      titleRef.current = result.doc.title;
+      setTitle(result.doc.title);
+      lastSavedRef.current = { content: docRef.current, title: result.doc.title };
+    }
+    setDocList((previous) => previous.map((entry) => (entry.id === id ? result.doc : entry)));
+    setHistoryRefreshKey((key) => key + 1);
+    showToast('标题已更新，并写入留痕');
+  };
+
+  const deleteDocument = async (id: string): Promise<void> => {
+    await flushSave();
+    await docApi.remove(id);
+    if (activeDocIdRef.current === id) {
+      activeDocIdRef.current = null;
+      setActiveDocId(null);
+      storeActiveDocId(null);
+    }
+    const remaining = await refreshDocs();
+    showToast('文档已移入 trash 回收站（留痕与版本保留）');
+    if (!activeDocIdRef.current) {
+      if (remaining[0]) await openDocById(remaining[0].id, { silent: true });
+      else await createNewDocument('未命名文档');
+    }
+  };
+
+  const revealDocument = async (id: string): Promise<void> => {
+    const result = await docApi.reveal(id);
+    showToast(`已在资源管理器打开：${result.folder}`);
+  };
+
+  const restoreDocumentContent = (content: string, rev: number): void => {
+    docRef.current = content;
+    lastSavedRef.current = { content, title: titleRef.current };
+    editorRef.current?.resetDoc(content, 0);
+    setStableDoc(content);
+    setDocEpoch((epoch) => epoch + 1);
+    setSelection(null);
+    setSyncState('synced');
+    setRevisionCount(rev);
+    setHistoryRefreshKey((key) => key + 1);
+    void refreshDocs();
+    showToast(`已回滚到 v${rev}，当前内容已作为新版本保留`);
+  };
+
+  /* 首次加载：取文档列表；一个文档都没有时把本地草稿落成第一个文档 */
+  useEffect(() => {
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
+    void (async () => {
+      setDocsLoading(true);
+      try {
+        const data = await docApi.list();
+        setDocList(data.docs);
+        setDocsRoot(data.root);
+        setDocsError(null);
+        let id = loadActiveDocId();
+        if (!id || !data.docs.some((doc) => doc.id === id)) id = data.docs[0]?.id ?? null;
+        if (!id) {
+          const created = await docApi.create({ title: titleRef.current || '未命名文档', content: docRef.current });
+          id = created.doc.id;
+          setDocList([created.doc]);
+        }
+        const { doc } = await docApi.get(id);
+        applyDocContent(doc);
+        void docApi.audit(id, { type: 'doc-opened', summary: '打开文档' }).catch(() => undefined);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setDocsError(message);
+        setSyncState('error');
+        setDocsLoading(false);
+      } finally {
+        setDocsLoading(false);
+        setBootstrapping(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* 自动保存到文档库（1200ms 防抖，产生版本与留痕） */
+  useEffect(() => {
+    if (!activeDocIdRef.current) return;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      void persistDocRef.current('auto-save');
+    }, 1200);
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [docEpoch, title]);
+
+  /* AI 提案一出现就留痕（无论最终接受还是拒绝） */
+  useEffect(() => {
+    const proposal = sessionState.proposals[0];
+    const id = activeDocIdRef.current;
+    if (!proposal || !id) return;
+    const key = `${proposal.requestId}:${proposal.ops.map((op) => `${op.from}-${op.to}`).join(',')}`;
+    if (proposalLoggedRef.current === key) return;
+    proposalLoggedRef.current = key;
+    const allOps = sessionState.proposals.flatMap((item) => item.ops);
+    const detail = {
+      instruction: sessionState.instruction,
+      model: sessionState.model,
+      presetId: sessionState.presetId,
+      requestId: proposal.requestId,
+      mode: proposal.mode,
+      before: allOps.map((op) => op.oldText).join('\n\n'),
+      after: allOps.map((op) => op.newText).join('\n\n'),
+      warnings: sessionState.proposals.flatMap((item) => item.warnings.map((warning) => warning.code)),
+    };
+    void docApi
+      .audit(id, {
+        type: 'ai-proposal',
+        summary: `AI 提案：${oneLine(sessionState.instruction || '（空指令）', 40)}`,
+        detail,
+      })
+      .catch(() => undefined);
+    setHistoryRefreshKey((key) => key + 1);
+  }, [sessionState.proposals, sessionState.instruction, sessionState.model, sessionState.presetId]);
+
 
   /* -------------------------------- 编辑器 -------------------------------- */
 
@@ -263,15 +549,43 @@ export function App() {
 
   /* ------------------------------ 接受 / 拒绝 ------------------------------ */
 
+  const logAiRejected = (summary: string, reason?: string): void => {
+    const proposal = sessionState.proposals[0];
+    const id = activeDocIdRef.current;
+    if (!proposal || !id) return;
+    const allOps = sessionState.proposals.flatMap((item) => item.ops);
+    void docApi
+      .audit(id, {
+        type: 'ai-rejected',
+        summary,
+        detail: {
+          instruction: sessionState.instruction,
+          model: sessionState.model,
+          presetId: sessionState.presetId,
+          mode: proposal.mode,
+          requestId: proposal.requestId,
+          reason,
+          before: allOps.map((op) => op.oldText).join('\n\n'),
+          after: allOps.map((op) => op.newText).join('\n\n'),
+        },
+      })
+      .catch(() => undefined);
+    setHistoryRefreshKey((key) => key + 1);
+  };
+
   const reject = () => {
+    logAiRejected('拒绝 AI 提案', '用户点击拒绝');
     session.reset();
     setConfirmAccept(false);
-    showToast('已拒绝，文档未修改');
+    showToast('已拒绝，文档未修改（已写入留痕）');
     editorRef.current?.focus();
   };
 
   const closeSession = () => {
     const wasActive = sessionState.status !== 'idle';
+    if (sessionState.status === 'review' && sessionState.proposals.length > 0) {
+      logAiRejected('关闭审阅，未应用 AI 提案', '用户关闭审阅面板');
+    }
     session.reset();
     setConfirmAccept(false);
     if (wasActive) window.requestAnimationFrame(() => editorRef.current?.focus());
@@ -320,6 +634,23 @@ export function App() {
       showToast('应用修改失败，请重试');
       return;
     }
+    const appliedDoc = editor.getDoc();
+    docRef.current = appliedDoc;
+    const allOps = state.proposals.flatMap((proposal) => proposal.ops);
+    void persistDoc('ai-accept', {
+      note: 'AI 修订已接受',
+      detail: {
+        instruction: state.instruction,
+        model: state.model,
+        presetId: state.presetId,
+        requestId: state.proposals[0]?.requestId,
+        mode: state.proposals[0]?.mode,
+        before: allOps.map((op) => op.oldText).join('\n\n'),
+        after: allOps.map((op) => op.newText).join('\n\n'),
+        warnings: state.proposals.flatMap((proposal) => proposal.warnings.map((warning) => warning.code)),
+      },
+    });
+    setHistoryRefreshKey((key) => key + 1);
     session.reset();
     setConfirmAccept(false);
     setStaleOverride(null);
@@ -362,6 +693,26 @@ export function App() {
     try {
       const result = await openMarkdownFile();
       if (!result) return;
+      try {
+        await flushSave();
+        const created = await docApi.create({ title: result.title || '导入的 Markdown 文件', content: result.text });
+        applyDocContent(created.doc);
+        await refreshDocs();
+        void docApi
+          .audit(created.doc.id, {
+            type: 'markdown-imported',
+            summary: '从本地 Markdown 文件创建文档',
+            detail: { title: result.title, fileName: result.handle?.name, chars: result.text.length },
+          })
+          .catch(() => undefined);
+        setHistoryRefreshKey((key) => key + 1);
+        setFileHandle(result.handle);
+        setFileName(result.handle ? result.handle.name : null);
+        showToast(`已作为新文档打开「${oneLine(result.title, 24)}」`);
+        return;
+      } catch {
+        // 文档库不可用时退回原来的本地文件编辑模式
+      }
       docRef.current = result.text;
       docRevRef.current += 1;
       titleRef.current = result.title;
@@ -390,6 +741,17 @@ export function App() {
     } catch (error) {
       showToast(`保存失败：${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  /** 保存到文档库（生成版本/留痕）；若绑定了本地文件或另存为，再写本地文件 */
+  const saveCurrentDoc = async (saveAs = false): Promise<void> => {
+    await flushSave('manual-save');
+    if (fileHandle || saveAs) {
+      await saveFile(saveAs);
+      return;
+    }
+    showToast('已保存到文档库（生成新版本，留痕已更新）');
+    setHistoryRefreshKey((key) => key + 1);
   };
 
   /* ----------------------------- Word 导入 ------------------------------ */
@@ -449,21 +811,50 @@ export function App() {
     if (!state?.result) return;
     const text = state.result.markdown;
     const nextTitle = state.result.title || state.fileName.replace(/\.docx$/i, '') || '导入的文档';
-    docRef.current = text;
-    docRevRef.current += 1;
-    titleRef.current = nextTitle;
-    setTitle(nextTitle);
-    setStableDoc(text);
-    setDocEpoch((epoch) => epoch + 1);
-    setFileHandle(null);
-    setFileName(null);
-    setPaneMode('edit');
-    setSelection(null);
-    session.reset();
-    editorRef.current?.resetDoc(text, 0);
-    setDocxImport(null);
-    docxFileRef.current = null;
-    showToast(`已导入 Word 文档（${state.result.stats.chars} 字），可按 Ctrl/⌘ S 另存为 .md`);
+    const apply = (): void => {
+      docRef.current = text;
+      docRevRef.current += 1;
+      titleRef.current = nextTitle;
+      setTitle(nextTitle);
+      setStableDoc(text);
+      setDocEpoch((epoch) => epoch + 1);
+      setFileHandle(null);
+      setFileName(null);
+      setPaneMode('edit');
+      setSelection(null);
+      session.reset();
+      editorRef.current?.resetDoc(text, 0);
+      setDocxImport(null);
+      docxFileRef.current = null;
+      showToast(`已导入 Word 文档（${state.result?.stats.chars ?? text.length} 字），创建为新文档`);
+    };
+    void (async () => {
+      try {
+        await flushSave();
+        const created = await docApi.create({ title: nextTitle, content: text });
+        applyDocContent(created.doc);
+        await refreshDocs();
+        void docApi
+          .audit(created.doc.id, {
+            type: 'docx-imported',
+            summary: `导入 Word：${state.fileName}`,
+            detail: {
+              fileName: state.fileName,
+              stats: state.result?.stats,
+              warnings: state.result?.warnings,
+            },
+          })
+          .catch(() => undefined);
+        setHistoryRefreshKey((key) => key + 1);
+        setFileHandle(null);
+        setFileName(null);
+        setDocxImport(null);
+        docxFileRef.current = null;
+        showToast(`已导入 Word 文档（${state.result?.stats.chars ?? text.length} 字），创建为新文档`);
+      } catch {
+        apply();
+      }
+    })();
   };
 
   const togglePreview = () => {
@@ -522,6 +913,16 @@ export function App() {
     }
 
     if (event.key === 'Escape') {
+      if (libraryOpen) {
+        event.preventDefault();
+        setLibraryOpen(false);
+        return;
+      }
+      if (historyOpen) {
+        event.preventDefault();
+        setHistoryOpen(false);
+        return;
+      }
       if (docxImport) {
         event.preventDefault();
         cancelDocxImport();
@@ -572,7 +973,7 @@ export function App() {
 
     if (mod && key === 's') {
       event.preventDefault();
-      void saveFile(event.shiftKey);
+      void saveCurrentDoc(event.shiftKey);
       return;
     }
 
@@ -625,6 +1026,17 @@ export function App() {
           ? '服务未连接'
           : '连接中…';
 
+  const syncLabel =
+    syncState === 'saving'
+      ? '同步中…'
+      : syncState === 'error'
+        ? '文档库离线'
+        : syncState === 'synced'
+          ? savedAt
+            ? `已同步 ${formatClock(savedAt)}`
+            : '已同步到文档库'
+          : '本地草稿';
+
   return (
     <div className="app">
       <header className="topbar">
@@ -645,12 +1057,51 @@ export function App() {
             /
           </span>
           <span className="file-meta" data-testid="file-meta">
-            {fileName ? oneLine(fileName, 28) : '草稿'}
-            {savedAt ? ` · 自动保存 ${formatClock(savedAt)}` : ''}
+            <span data-testid="sync-status">{syncLabel}</span>
+            {activeDocId ? ` · v${revisionCount} · 留痕已开启` : ''}
           </span>
         </div>
 
         <div className="topbar-actions">
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => {
+              setLibraryOpen(true);
+              void refreshDocs();
+            }}
+            aria-label="文档库"
+            title="文档库：新建 / 打开 / 管理文档"
+            data-testid="open-library"
+          >
+            <IconFolder />
+            <span className="tool-label">文档</span>
+          </button>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => void createNewDocument()}
+            aria-label="新建文档"
+            title="新建空白文档"
+            data-testid="new-document"
+          >
+            <IconSparkle />
+            <span className="tool-label">新建</span>
+          </button>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => {
+              setHistoryOpen(true);
+              setHistoryRefreshKey((key) => key + 1);
+            }}
+            aria-label="审阅与留痕"
+            title="审阅 / 留痕：AI 提案、版本、回滚"
+            data-testid="open-history"
+          >
+            <IconBraces />
+            <span className="tool-label">审阅</span>
+          </button>
           <button type="button" className="tool-btn" onClick={openFile} aria-label="打开 Markdown 文件" title="打开 · Ctrl+O">
             <IconFolder />
             <span className="tool-label">打开</span>
@@ -666,7 +1117,7 @@ export function App() {
             <IconWord />
             <span className="tool-label">导入 Word</span>
           </button>
-          <button type="button" className="tool-btn" onClick={() => void saveFile(false)} aria-label="保存文档" title="保存 · Ctrl+S">
+          <button type="button" className="tool-btn" onClick={() => void saveCurrentDoc(false)} aria-label="保存文档" title="保存 · Ctrl+S">
             <IconSave />
             <span className="tool-label">保存</span>
           </button>
@@ -728,7 +1179,9 @@ export function App() {
               <span className="meta-sep" aria-hidden="true">
                 /
               </span>
-              <span>{savedAt ? `自动保存于 ${formatClock(savedAt)}` : '尚未自动保存'}</span>
+              <span data-testid="doc-sync">
+                {activeDocId ? `v${revisionCount} · ${syncLabel}` : syncLabel}
+              </span>
               {fileName ? (
                 <>
                   <span className="meta-sep" aria-hidden="true">
@@ -848,6 +1301,33 @@ export function App() {
 
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} isMac={isMac} />
 
+      <DocumentLibrary
+        open={libraryOpen}
+        docs={docList}
+        activeDocId={activeDocId}
+        root={docsRoot}
+        loading={docsLoading}
+        error={docsError}
+        onClose={() => setLibraryOpen(false)}
+        onCreate={createNewDocument}
+        onOpen={openDocById}
+        onRename={renameDocument}
+        onDelete={deleteDocument}
+        onReveal={revealDocument}
+        onRefresh={async () => {
+          await refreshDocs();
+        }}
+      />
+
+      <HistoryPanel
+        open={historyOpen}
+        docId={activeDocId}
+        docTitle={title}
+        refreshKey={historyRefreshKey}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={restoreDocumentContent}
+      />
+
       {docxImport ? (
         <DocxImportDialog
           state={docxImport}
@@ -882,6 +1362,15 @@ export function App() {
             ? '修改已生成，等待审阅'
             : ''}
       </span>
+
+      {bootstrapping ? (
+        <div className="doc-boot" data-testid="doc-boot" role="status" aria-live="polite">
+          <span className="doc-boot-mark" aria-hidden="true">
+            ✦
+          </span>
+          <span>正在加载文档库…</span>
+        </div>
+      ) : null}
 
       {health === 'offline' ? (
         <div className="offline-banner" role="alert">

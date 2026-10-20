@@ -210,6 +210,7 @@
         <a href="#截图">截图</a>
         <a href="#快速开始">快速开始</a>
         <a href="#使用">使用</a>
+        <a href="#文档库与审阅全程留痕">文档库与审阅（全程留痕）</a>
         <a href="#从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</a>
         <a href="#word-插件在-word-里直接改字">Word 插件（在 Word 里直接改字）</a>
         <a href="#工程方法简要">工程方法（简要）</a>
@@ -277,18 +278,26 @@
 <li>词级 diff（CJK 友好）+ 分级警告；红色警告（截断/上下文泄漏）需二次确认</li>
 <li>接受、拒绝、重新生成、过期快照保护；接受后可一步撤销</li>
 </ul>
+<p><strong>文档库与留痕（v0.4.0 新增）</strong></p>
+<ul>
+<li><strong>新建文档</strong>：文档库一键新建；每个文档独立的磁盘子文件夹</li>
+<li>文档库：打开 / 切换 / 重命名 / 删除（移入 <code>trash/</code> 回收站）/ 在资源管理器打开文件夹</li>
+<li>自动保存到文档库（1.2 秒防抖），每次内容变化生成不可变版本快照（<code>revisions/</code>）</li>
+<li><strong>审阅 / 留痕</strong>：追加式 <code>audit.jsonl</code> 记录创建、每次保存、AI 提案 / 接受 / 拒绝、重命名、导入、回滚；可查看版本 diff、一键回滚、导出留痕 JSON</li>
+<li>AI 提案即使被拒绝也会留痕；删除文档只移入回收站，历史与留痕全部保留</li>
+</ul>
 <p><strong>Word 导入</strong></p>
 <ul>
 <li>顶栏「导入 Word」：<code>.docx</code> → 标准 Markdown，语义保留标题/列表/表格/链接/引用/代码块</li>
 <li>图片不导出，替换为可读占位符，避免 Markdown 体积爆炸</li>
-<li>转换前展示摘要与预览，确认后替换当前文档</li>
+<li>转换前展示摘要与预览，确认后创建为新文档（旧文档完整保留在文档库）</li>
 <li>同样的转换能力可脱离界面使用：<code>pnpm docx2md</code> CLI 或 <code>POST /api/import/docx</code></li>
 </ul>
 <p><strong>工程与质量</strong></p>
 <ul>
 <li>前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换</li>
 <li>服务端唯一持有 API Key；文档仅发送给 DeepSeek</li>
-<li>261 个单元测试、30 例真实模型评测、12 个 Playwright E2E、完整验证报告</li>
+<li>269 个单元测试、30 例真实模型评测、13 个 Playwright E2E、完整验证报告</li>
 </ul>
 <h2 id="截图">截图</h2>
 <table>
@@ -307,12 +316,20 @@
 <td><strong>审阅面板</strong>：本地识别、模型识别、词级 diff、token</td>
 </tr>
 <tr>
+<td><img src="screenshots/11-doc-library.png" alt="文档库"></td>
+<td><img src="screenshots/12-history-timeline.png" alt="审阅留痕时间线"></td>
+</tr>
+<tr>
+<td><strong>文档库</strong>：每个文档一个子文件夹，新建 / 切换 / 重命名 / 删除</td>
+<td><strong>审阅 · 留痕</strong>：AI 提案 / 接受 / 保存 / 版本时间线</td>
+</tr>
+<tr>
 <td><img src="screenshots/04-dark.png" alt="深色模式"></td>
 <td><img src="screenshots/07-docx-import.png" alt="Word 导入"></td>
 </tr>
 <tr>
 <td><strong>深色模式</strong>：纸感深色 + 朱砂强调色</td>
-<td><strong>Word 导入</strong>：摘要、预览、替换确认</td>
+<td><strong>Word 导入</strong>：摘要、预览、创建新文档</td>
 </tr>
 </tbody></table>
 <h2 id="快速开始">快速开始</h2>
@@ -330,6 +347,7 @@ PORT=5199                                   # 可选
 DOCMAX_MODEL=deepseek-flash                 # 可选：deepseek-flash | deepseek-v4-pro
 DOCMAX_MAX_DOCX_BYTES=26214400              # 可选：docx 大小上限（字节）
 DOCMAX_TIMEOUT_MS=600000                    # 可选：单次生成超时（默认 10 分钟）
+DOCMAX_DATA_DIR=D:\DocMaxData               # 可选：文档库根目录（默认开发版 ./data，安装版「文档\DocMax」）
 </code></pre>
 <p>生产运行：</p>
 <pre><code class="language-bash">pnpm build
@@ -359,7 +377,7 @@ pnpm start                   # 一个进程同时服务 dist/ 与 API
 <li>安装界面可填写 DeepSeek API Key（留空也能稍后在安装目录的 <code>.env</code> 中配置）；</li>
 <li>创建桌面 / 开始菜单快捷方式（无控制台窗口启动）；</li>
 <li>检测到 Word 时自动安装 Word 加载项（重启 Word 后出现 DocMax 选项卡）；</li>
-<li>在 Windows「设置 → 应用」中提供标准卸载；卸载时会把 <code>.env</code> 备份到 <code>%USERPROFILE%\DocMax.env.bak</code>。</li>
+<li>在 Windows「设置 → 应用」中提供标准卸载；卸载时会把 <code>.env</code> 备份到 <code>%USERPROFILE%\DocMax.env.bak</code>，<strong>文档库（<code>文档\DocMax</code>）会保留</strong>。</li>
 </ul>
 <p>说明：安装包未做代码签名，Windows SmartScreen 可能提示，选择「更多信息 → 仍要运行」即可；安装包内为生产构建，代码更新后重新运行构建脚本生成新包。</p>
 <blockquote>
@@ -373,6 +391,7 @@ pnpm start                   # 一个进程同时服务 dist/ 与 API
 <li>等待流式生成 → 在右侧审阅面板查看模型识别、diff 与警告</li>
 <li><code>Ctrl/⌘ Enter</code> 接受（一次性应用），<code>Esc</code> 放弃</li>
 <li>接受后按 <code>Ctrl/⌘ Z</code>，<strong>一步撤销</strong>回到修改前</li>
+<li>所有编辑自动保存到文档库（每个文档一个子文件夹）；顶栏「审阅」可查看全程留痕、版本 diff 与回滚</li>
 </ul>
 <p>常用快捷键：</p>
 <table>
@@ -472,12 +491,47 @@ pnpm start                   # 一个进程同时服务 dist/ 与 API
 <li><strong>不限制输出长度</strong>：服务端不发送 <code>max_tokens</code>，长文不会被 1K/2K 的人为上限截断；生成超时默认 10 分钟，可用 <code>DOCMAX_TIMEOUT_MS</code> 调整；</li>
 <li>解释模式不使用提示词模式，只回答问题。</li>
 </ul>
+<h2 id="文档库与审阅全程留痕">文档库与审阅（全程留痕）</h2>
+<p>顶栏新增三个入口：<strong>文档</strong>（文档库）、<strong>新建</strong>、<strong>审阅</strong>。</p>
+<h3 id="每个文档一个子文件夹">每个文档一个子文件夹</h3>
+<p>文档库保存在磁盘上，可直接用资源管理器查看/备份：</p>
+<pre><code>&lt;数据目录&gt;/
+  docs/
+    doc-20261020-221500-ab12cd/     ← 每个文档独立子文件夹
+      document.md                   当前内容
+      meta.json                     标题 / 时间 / 版本数 / 字符数 / hash
+      revisions/000001.md …         不可变版本快照（每次内容变化新增）
+      revisions.json                版本元数据
+      audit.jsonl                   追加式留痕（永不修改历史行）
+  trash/                            删除的文档（整文件夹移入，留痕保留）
+</code></pre>
+<ul>
+<li>数据目录：开发模式为项目下 <code>data/</code>；安装版为 <code>%USERPROFILE%\Documents\DocMax</code>；可用 <code>DOCMAX_DATA_DIR</code> 覆盖；</li>
+<li>文档库支持新建、打开、切换、重命名、删除（移入 <code>trash/</code>）、「文件夹」按钮直接在资源管理器打开；</li>
+<li>每个文档的标题、版本、留痕互相隔离，删除/移动项目不影响其他文档。</li>
+</ul>
+<h3 id="新建--自动保存--版本">新建 / 自动保存 / 版本</h3>
+<ul>
+<li>顶栏「新建」或文档库「新建文档」创建空白文档并立即切换；</li>
+<li>编辑后 <strong>1.2 秒防抖自动保存</strong>到文档库；每次内容变化产生一个版本；相同内容不重复建版本；</li>
+<li><code>Ctrl/⌘ S</code> 手动保存（生成新版本；若绑定了本地文件则同时写回文件）；</li>
+<li>导入 <code>.docx</code> / 打开本地 <code>.md</code> 会<strong>创建为新文档</strong>，原文档完整保留。</li>
+</ul>
+<h3 id="审阅与留痕">审阅与留痕</h3>
+<p>点顶栏「审阅」打开时间线：</p>
+<ul>
+<li>留痕事件：创建、每次保存、AI 提案、AI 接受、AI 拒绝、重命名、导入、回滚、删除；</li>
+<li><strong>AI 提案即使被拒绝也记录</strong>（指令、模型、提示词模式、选区前后文本、警告）；</li>
+<li>事件按版本查看前后 diff；可一键回滚到任意版本（回滚本身也生成新版本并留痕，不丢失当前内容）；</li>
+<li>「导出留痕 JSON」可导出该文档完整事件与版本元数据；</li>
+<li>删除只移入 <code>trash/</code>，不会物理删除任何版本/留痕。</li>
+</ul>
 <h2 id="从-word-导入docx--markdown">从 Word 导入（docx → Markdown）</h2>
 <p>Word 文档不想手动重排？点顶栏 <strong>「导入 Word」</strong>，选择 <code>.docx</code>，DocMax 会先在本地转换：</p>
 <ul>
 <li><strong>标题 / 段落 / 粗体 / 斜体 / 列表 / 表格 / 链接 / 引用 / 代码块</strong>按 Word 样式语义转换为标准 Markdown；</li>
 <li><strong>图片不导出</strong>：转换为可读占位符 <code>&gt; [图片占位 N：image/png，未导出图片文件]</code>（避免 base64 让 md 体积爆炸），转换前可预览；</li>
-<li>转换完成后先展示摘要与 Markdown 预览，确认后<strong>替换当前文档</strong>（请先保存用不到的旧内容），再按 <code>Ctrl/⌘ S</code> 保存为 <code>.md</code>；</li>
+<li>转换完成后先展示摘要与 Markdown 预览，确认后<strong>创建为新文档</strong>（旧文档完整保留在文档库）；</li>
 <li>文件大小上限默认 25 MB，可用 <code>DOCMAX_MAX_DOCX_BYTES</code> 调整。</li>
 </ul>
 <p>同样的转换能力也可以脱离界面直接用命令行：</p>
@@ -567,7 +621,7 @@ Node 单进程（Express 5 + Vite middleware）
 </thead>
 <tbody><tr>
 <td>核心单元测试</td>
-<td><strong>261 / 261 通过</strong>（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 <code>max_tokens</code>）</td>
+<td><strong>269 / 269 通过</strong>（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 <code>max_tokens</code> + 文档库/版本/留痕 8 项）</td>
 </tr>
 <tr>
 <td>真实模型评测</td>
@@ -594,8 +648,12 @@ Node 单进程（Express 5 + Vite middleware）
 <td>真实模型输出保留标题/列表/表格结构，并为 4 处缺口生成 <code>（需补充：…）</code>，未编造事实</td>
 </tr>
 <tr>
+<td>文档库 / 留痕</td>
+<td>每个文档独立子文件夹；保存生成不可变版本；相同内容不重复建版本；AI 提案/接受/拒绝、重命名、回滚、删除全部追加式留痕；删除移入 <code>trash/</code> 保留历史</td>
+</tr>
+<tr>
 <td><code>E2E（真实 Chrome + 真实 DeepSeek）</code></td>
-<td><strong>12 / 12 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式（空指令提交）+ docx 导入替换/取消/图片占位/错误处理</td>
+<td><strong>13 / 13 通过</strong>：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式 + <strong>新建文档/自动保存/审阅留痕/版本 diff/回滚/切回文档</strong> + docx 导入</td>
 </tr>
 <tr>
 <td>Word 加载项</td>
@@ -712,6 +770,34 @@ node node_modules/@playwright/test/cli.js test
 <td><code>POST /api/import/docx</code></td>
 <td>请求体为 <code>.docx</code> 二进制，返回 Markdown + 统计 + 警告</td>
 </tr>
+<tr>
+<td><code>GET/POST /api/docs</code></td>
+<td>文档列表 / 新建文档（每个文档独立子文件夹）</td>
+</tr>
+<tr>
+<td><code>GET/PUT/PATCH/DELETE /api/docs/:id</code></td>
+<td>打开 / 保存（生成版本）/ 重命名 / 移入 trash</td>
+</tr>
+<tr>
+<td><code>GET /api/docs/:id/history</code></td>
+<td>追加式留痕事件 + 版本列表</td>
+</tr>
+<tr>
+<td><code>GET /api/docs/:id/revisions/:rev</code></td>
+<td>读取历史版本内容（用于 diff / 回滚）</td>
+</tr>
+<tr>
+<td><code>POST /api/docs/:id/restore</code></td>
+<td>回滚到指定版本（生成新版本并留痕）</td>
+</tr>
+<tr>
+<td><code>POST /api/docs/:id/audit</code></td>
+<td>追加 AI 提案/拒绝等非内容事件</td>
+</tr>
+<tr>
+<td><code>POST /api/docs/:id/reveal</code></td>
+<td>在资源管理器中打开该文档的文件夹</td>
+</tr>
 </tbody></table>
 <h2 id="项目结构">项目结构</h2>
 <pre><code>src/core/          前后端共享的纯 TS 核心
@@ -723,19 +809,25 @@ node node_modules/@playwright/test/cli.js test
   apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
   diff.ts          CJK 友好的词级 diff
   presets.ts       系统内置提示词模式（默认 / 结构重写·括号补全 / 精简 / 扩写 / …）
+  docs.ts          文档库共享契约（摘要/详情/版本/留痕事件）
   protocol.ts      SSE 编码、公开配置
   client.ts        浏览器端 SSE 客户端
 server/            Node/Express 服务（唯一持有 API Key 的进程）
   deepseek.ts      DeepSeek 流式客户端 + 错误映射
   editRoute.ts     /api/edit：校验 → 提示词 → 流式 → 校验 → 修复 → 提案
   wordRoute.ts     /api/word/edit：Word 插件专用，一次性 JSON 返回
+  docStore.ts      文档库存储：子文件夹、版本快照、audit.jsonl 留痕、原子写
+  docsRoute.ts     /api/docs：新建/保存/版本/回滚/审计/打开文件夹
   docx.ts          DOCX → Markdown 转换器（mammoth + turndown，图片占位）
   index.ts         单进程：API + Vite middleware / dist 静态文件
-src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层）
+src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层、文档库、审阅留痕）
+  docApi.ts        文档库 HTTP 客户端
+  DocumentLibrary.tsx  文档库（新建/打开/重命名/删除/文件夹）
+  HistoryPanel.tsx     审阅留痕时间线（diff / 回滚 / 导出）
 word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
 installer/         Windows 安装包（NSIS 脚本、自包含运行时构建、启动器）
-tests/             vitest 单元测试（含 docx 转换与测试夹具）
-e2e/               Playwright 测试（AI 编辑 + docx 导入）
+tests/             vitest 单元测试（含 docx 转换、文档库存储与测试夹具）
+e2e/               Playwright 测试（AI 编辑 + docx 导入 + 文档库/留痕）
 scripts/           冒烟、评测、API 自检、docx2md CLI、landing 生成、桌面启动器与图标脚本
 assets/            桌面快捷方式图标（docmax.ico）
 docs/             HTML 项目主页与截图
@@ -745,6 +837,7 @@ docs/             HTML 项目主页与截图
 <li>API Key 只存在于服务端 <code>.env</code>（已 gitignore），不会下发到浏览器；</li>
 <li>服务默认只监听 <code>127.0.0.1</code>；</li>
 <li>文档内容仅发送给 DeepSeek API，不经过其他第三方；</li>
+<li>文档库只写入本机数据目录（开发版 <code>data/</code>、安装版「文档\DocMax」），不经过任何网络；</li>
 <li>文档内容被视为数据，提示词明确防注入；每请求随机哨兵进一步降低协议伪造风险；</li>
 <li>Word 转换禁用外部文件访问，并过滤 <code>javascript:</code> / <code>data:</code> / <code>file:</code> 等危险链接；</li>
 <li>Word 加载项只访问本机 <code>127.0.0.1</code>，源码在仓库内可审计，构建后安装到 STARTUP。</li>
@@ -756,6 +849,8 @@ docs/             HTML 项目主页与截图
 <li>不发送 <code>max_tokens</code>，但输出仍受模型/服务端的默认上限约束；超长输出可能遇到模型侧上限（此时会给出截断警告，不会静默应用）；</li>
 <li>仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；</li>
 <li>协同编辑 / 云同步未实现（本地优先是有意选择）；</li>
+<li>自动保存按 1.2 秒防抖产生版本，频繁编辑/长文会生成较多版本文件（目前不自动清理；可备份/手动归档 <code>revisions/</code>）；</li>
+<li>文档库是单机文件存储，不支持多进程同时写同一文档（服务端已按文档串行化写操作）；</li>
 <li>Word 导入为语义转换，不保证版式级还原（详见上文限制）。</li>
 </ul>
 <h2 id="许可">许可</h2>

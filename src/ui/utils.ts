@@ -140,6 +140,27 @@ export function storePrefs(prefs: StoredPrefs): void {
   }
 }
 
+/* ---------------- 文档库（当前打开文档 id） ---------------- */
+
+const ACTIVE_DOC_KEY = 'docmax:active-doc:v1';
+
+export function loadActiveDocId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_DOC_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function storeActiveDocId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_DOC_KEY, id);
+    else localStorage.removeItem(ACTIVE_DOC_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /** 是否是用户可编辑的焦点目标（用于全局 Ctrl+Z 让位给输入框原生撤销） */
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

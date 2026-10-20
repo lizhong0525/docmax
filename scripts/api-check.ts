@@ -278,6 +278,96 @@ async function main(): Promise<void> {
     defaultEmptyBody,
   );
 
+  console.log('\n[8] 文档库 / 留痕');
+  const createDocRes = await fetch(`${BASE}/api/docs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'API 自检文档', content: '# 自检\n\n第一版内容。\n' }),
+  });
+  const createDocBody = (await createDocRes.json()) as { doc?: { id: string; folder: string; revisionCount: number } };
+  check('POST /api/docs → 201 且返回文档 id', createDocRes.status === 201 && Boolean(createDocBody.doc?.id), createDocBody);
+  const apiDocId = createDocBody.doc?.id ?? '';
+  check('文档拥有独立子文件夹', Boolean(createDocBody.doc?.folder?.endsWith(apiDocId)));
+
+  const docsListRes = await fetch(`${BASE}/api/docs`);
+  const docsListBody = (await docsListRes.json()) as { docs?: Array<{ id: string }>; root?: string };
+  check('GET /api/docs 列表包含新文档与数据目录', Boolean(docsListBody.docs?.some((doc) => doc.id === apiDocId) && docsListBody.root), docsListBody.root);
+
+  const saveDocRes = await fetch(`${BASE}/api/docs/${apiDocId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: '# 自检\n\n第二版内容。\n', source: 'manual-save', detail: { reason: 'api-check' } }),
+  });
+  const saveDocBody = (await saveDocRes.json()) as { revision?: { rev: number }; doc?: { revisionCount: number } };
+  check('PUT 保存 → 生成 v2', saveDocRes.ok && saveDocBody.revision?.rev === 2, saveDocBody);
+
+  const saveAgainRes = await fetch(`${BASE}/api/docs/${apiDocId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: '# 自检\n\n第二版内容。\n', source: 'auto-save' }),
+  });
+  const saveAgainBody = (await saveAgainRes.json()) as { unchanged?: boolean; revision?: unknown };
+  check('相同内容重复保存 → unchanged 且不产生版本', saveAgainRes.ok && saveAgainBody.unchanged === true && saveAgainBody.revision === null, saveAgainBody);
+
+  const renameRes = await fetch(`${BASE}/api/docs/${apiDocId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'API 自检文档（已重命名）' }),
+  });
+  const renameBody = (await renameRes.json()) as { doc?: { title: string } };
+  check('PATCH 重命名', renameRes.ok && renameBody.doc?.title === 'API 自检文档（已重命名）', renameBody);
+
+  const auditRes = await fetch(`${BASE}/api/docs/${apiDocId}/audit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'ai-proposal', summary: 'API 自检 AI 提案', detail: { instruction: '润色', presetId: 'default' } }),
+  });
+  check('POST 追加 AI 提案留痕', auditRes.status === 201, auditRes.status);
+
+  const historyRes = await fetch(`${BASE}/api/docs/${apiDocId}/history`);
+  const historyBody = (await historyRes.json()) as {
+    events?: Array<{ type: string }>;
+    revisions?: Array<{ rev: number }>;
+  };
+  const eventTypes = (historyBody.events ?? []).map((event) => event.type);
+  check(
+    'GET history 包含 create/save/rename/ai-proposal 与 2 个版本',
+    historyRes.ok &&
+      eventTypes.includes('doc-created') &&
+      eventTypes.includes('doc-saved') &&
+      eventTypes.includes('doc-renamed') &&
+      eventTypes.includes('ai-proposal') &&
+      (historyBody.revisions ?? []).length === 2,
+    eventTypes,
+  );
+
+  const revRes = await fetch(`${BASE}/api/docs/${apiDocId}/revisions/1`);
+  const revBody = (await revRes.json()) as { content?: string };
+  check('GET 历史版本 v1 内容', revRes.ok && Boolean(revBody.content?.includes('第一版内容')), revBody.content);
+
+  const restoreRes = await fetch(`${BASE}/api/docs/${apiDocId}/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rev: 1 }),
+  });
+  const restoreBody = (await restoreRes.json()) as { revision?: { rev: number; source: string } };
+  check('POST 回滚到 v1 → 生成 v3 restore 版本', restoreRes.ok && restoreBody.revision?.rev === 3 && restoreBody.revision?.source === 'restore', restoreBody);
+
+  const restoredDocRes = await fetch(`${BASE}/api/docs/${apiDocId}`);
+  const restoredDocBody = (await restoredDocRes.json()) as { doc?: { content: string; revisionCount: number } };
+  check(
+    '回滚后当前内容等于 v1 且版本数为 3',
+    restoredDocBody.doc?.content?.includes('第一版内容') === true && restoredDocBody.doc?.revisionCount === 3,
+    restoredDocBody.doc?.revisionCount,
+  );
+
+  const deleteRes = await fetch(`${BASE}/api/docs/${apiDocId}`, { method: 'DELETE' });
+  const deleteBody = (await deleteRes.json()) as { ok?: boolean; trashedTo?: string };
+  check('DELETE → 移入 trash（保留留痕）', deleteRes.ok && deleteBody.ok === true && Boolean(deleteBody.trashedTo), deleteBody);
+
+  const missingRes = await fetch(`${BASE}/api/docs/../escape`);
+  check('非法文档 id 被拒绝', missingRes.status === 400 || missingRes.status === 404, missingRes.status);
+
   console.log(failures === 0 ? '\n✅ API 自检全部通过' : `\n❌ ${failures} 项失败`);
   process.exitCode = failures ? 1 : 0;
 }
