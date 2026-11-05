@@ -8,8 +8,8 @@
 ![许可证](https://img.shields.io/badge/license-未声明-lightgrey)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A522-339933)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-V4.1%20Flash-4D6BFE)
-![Tests](https://img.shields.io/badge/tests-269%2F269-brightgreen)
-![E2E](https://img.shields.io/badge/E2E-13%2F13-brightgreen)
+![Tests](https://img.shields.io/badge/tests-275%2F275-brightgreen)
+![E2E](https://img.shields.io/badge/E2E-14%2F14-brightgreen)
 
 ![审阅面板：本地识别 + 模型识别 + 词级 diff](docs/screenshots/03-review-diff.png)
 
@@ -46,6 +46,13 @@
 - 词级 diff（CJK 友好）+ 分级警告；红色警告（截断/上下文泄漏）需二次确认
 - 接受、拒绝、重新生成、过期快照保护；接受后可一步撤销
 
+**全文修改 · 审查修改（v0.5.0 新增）**
+- 顶栏「全文修改 · 审查审批」或全选后 `Ctrl/⌘ K`：整篇重写，提交后进入**审查修改**面板
+- 逐处审批可视化：行级差异拆成独立 hunk，左侧原文 / 右侧建议，状态徽章（待审批 / 已批准 / 已拒绝）+ 审批进度条
+- 可逐处批准/拒绝、全部批准/拒绝/重置；**只应用批准的修改**，未审批/拒绝保留原文
+- 审批结果写入文档留痕（`review-approved` / `review-rejected`），版本历史可追溯
+- 应用是一次 CodeMirror transaction，`Ctrl/⌘ Z` 可整体撤销
+
 **文档库与留痕（v0.4.0 新增）**
 - **新建文档**：文档库一键新建；每个文档独立的磁盘子文件夹
 - 文档库：打开 / 切换 / 重命名 / 删除（移入 `trash/` 回收站）/ 在资源管理器打开文件夹
@@ -62,7 +69,7 @@
 **工程与质量**
 - 前后端共享纯 TS 核心（解析、匹配、校验、diff），可单测、可替换
 - 服务端唯一持有 API Key；文档仅发送给 DeepSeek
-- 269 个单元测试、30 例真实模型评测、13 个 Playwright E2E、完整验证报告
+- 275 个单元测试、30 例真实模型评测、14 个 Playwright E2E、完整验证报告
 
 ## 截图
 
@@ -72,6 +79,8 @@
 | **选区识别 + 指令条**：块类型、词边界、payload 快照 | **审阅面板**：本地识别、模型识别、词级 diff、token |
 | ![文档库](docs/screenshots/11-doc-library.png) | ![审阅留痕时间线](docs/screenshots/12-history-timeline.png) |
 | **文档库**：每个文档一个子文件夹，新建 / 切换 / 重命名 / 删除 | **审阅 · 留痕**：AI 提案 / 接受 / 保存 / 版本时间线 |
+| ![全文修改审批（待审批）](docs/screenshots/14-full-review-pending.png) | ![全文修改审批（部分批准）](docs/screenshots/15-full-review-decisions.png) |
+| **全文修改 · 审查修改**：逐处审批、进度条、批准/拒绝状态 | **部分批准**：只应用已批准 hunk，其余保留原文 |
 | ![深色模式](docs/screenshots/04-dark.png) | ![Word 导入](docs/screenshots/07-docx-import.png) |
 | **深色模式**：纸感深色 + 朱砂强调色 | **Word 导入**：摘要、预览、创建新文档 |
 
@@ -157,6 +166,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 - `Ctrl/⌘ Enter` 接受（一次性应用），`Esc` 放弃
 - 接受后按 `Ctrl/⌘ Z`，**一步撤销**回到修改前
 - 所有编辑自动保存到文档库（每个文档一个子文件夹）；顶栏「审阅」可查看全程留痕、版本 diff 与回滚
+- 全文修改：点标题下方「✦ 全文修改 · 审查审批」，或全选后 `Ctrl/⌘ K`；提交后逐处审批
 
 常用快捷键：
 
@@ -194,6 +204,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 - 「结构重写」专治原文写到一半、信息不全：保留原有标题/列表/表格结构，缺失处写成 `（需补充：具体缺什么）`，不会编造事实；
 - **不限制输出长度**：服务端不发送 `max_tokens`，长文不会被 1K/2K 的人为上限截断；生成超时默认 10 分钟，可用 `DOCMAX_TIMEOUT_MS` 调整；
 - 解释模式不使用提示词模式，只回答问题。
+
+### 全文修改 · 审查修改（逐处审批）
+
+普通选区编辑是「看 diff → 接受/拒绝整份提案」；全文修改会生成一篇全新文档，因此 v0.5.0 增加了独立的**审查修改**流程：
+
+1. 点标题下方 **「✦ 全文修改 · 审查审批」**，或 `Ctrl/⌘ A` 全选后按 `Ctrl/⌘ K`；
+2. 输入指令（或选提示词模式）→ 模型生成整篇审查稿；
+3. 自动打开「审查修改」面板：
+   - 行级拆成独立 hunk；左侧原文、右侧建议，每处带 **待审批 / 已批准 / 已拒绝** 状态；
+   - 顶部审批进度条与计数（已批准 / 已拒绝 / 待审批）；
+   - 支持逐处批准/拒绝、全部批准、全部拒绝、重置；
+4. 点「应用 N 处已批准修改」：**只应用批准的 hunk**，未审批和已拒绝的保留原文；
+   如果还有未审批项，会先提示并需要再确认一次；
+5. 应用是单个 CodeMirror transaction，`Ctrl/⌘ Z` 可整体撤销；审批结果写入文档留痕（`review-approved` / `review-rejected`）。
+
+![全文修改审批](docs/screenshots/14-full-review-pending.png)
+
+![部分批准](docs/screenshots/15-full-review-decisions.png)
 
 ## 文档库与审阅（全程留痕）
 
@@ -323,15 +351,16 @@ Node 单进程（Express 5 + Vite middleware）
 
 | 项目 | 结果 |
 | --- | --- |
-| 核心单元测试 | **269 / 269 通过**（原有解析/匹配/选区/diff/docx + 提示词模式、空指令回退、请求体无 `max_tokens` + 文档库/版本/留痕 8 项） |
+| 核心单元测试 | **275 / 275 通过**（解析/匹配/选区/diff/docx + 提示词模式 + 文档库/版本/留痕 + 全文审查 hunk/审批应用 6 项） |
 | 真实模型评测 | **30 / 30 通过**（rewrite / surgical / insert / ask；≥4000 字长选区、注入文本、表格/代码/frontmatter、翻译/扩缩写…） |
 | 应用安全性 | **选区外零改动率 100%**，提案可应用率 100%，结构校验 100% |
 | 延迟 | 总延迟 avg **1.05s** / p50 849ms / p95 2.92s；首字 avg 780ms |
 | 成本 | 30 次真实编辑共约 **$0.0038**（缓存命中时，约 $0.00013/次） |
 | 长输出 / 无限制 | 单次实测 **2352 字**、`completionTokens=1367`（旧 1024 token 上限会截断），`truncated=false` |
 | 结构重写模式 | 真实模型输出保留标题/列表/表格结构，并为 4 处缺口生成 `（需补充：…）`，未编造事实 |
+| 全文修改 · 审查修改 | 行级 hunk 审批；批准全部→全文一致，全部拒绝→原文一致，部分批准→只替换批准部分；未审批保留原文；审批结果可回滚并写入留痕 |
 | 文档库 / 留痕 | 每个文档独立子文件夹；保存生成不可变版本；相同内容不重复建版本；AI 提案/接受/拒绝、重命名、回滚、删除全部追加式留痕；删除移入 `trash/` 保留历史 |
-| `E2E（真实 Chrome + 真实 DeepSeek）` | **13 / 13 通过**：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式 + **新建文档/自动保存/审阅留痕/版本 diff/回滚/切回文档** + docx 导入 |
+| `E2E（真实 Chrome + 真实 DeepSeek）` | **14 / 14 通过**：接受/撤销/拒绝/插入/预览/窄屏 + 提示词模式 + 新建文档/自动保存/留痕/版本 + **全文修改逐处批准/拒绝/部分应用** + docx 导入 |
 | Word 加载项 | 构建/安装成功；VBA 自检 + **隐藏 Word 文档中的选区替换**自检通过（真实 DeepSeek，0.7–1.1s）；新增「结构重写」按钮 |
 | UI 验收 | **52 / 52 断言通过**，20 张截图，0 console error / 0 pageerror |
 
@@ -397,6 +426,7 @@ src/core/          前后端共享的纯 TS 核心
   apply.ts         分层锚点匹配、结构校验、提案构建、应用前快照校验
   diff.ts          CJK 友好的词级 diff
   presets.ts       系统内置提示词模式（默认 / 结构重写·括号补全 / 精简 / 扩写 / …）
+  review.ts        全文修改审查模型（行级 hunk、逐处审批、应用已批准部分）
   docs.ts          文档库共享契约（摘要/详情/版本/留痕事件）
   protocol.ts      SSE 编码、公开配置
   client.ts        浏览器端 SSE 客户端
@@ -412,6 +442,7 @@ src/ui/            React + CodeMirror 6 界面（含 Word 导入浮层、文档�
   docApi.ts        文档库 HTTP 客户端
   DocumentLibrary.tsx  文档库（新建/打开/重命名/删除/文件夹）
   HistoryPanel.tsx     审阅留痕时间线（diff / 回滚 / 导出）
+  FullDocReview.tsx    全文修改审查审批面板（逐处批准/拒绝、进度可视化）
 word-addin/        Word 加载项（VBA + Ribbon customUI + 构建/安装/自检脚本）
 installer/         Windows 安装包（NSIS 脚本、自包含运行时构建、启动器）
 tests/             vitest 单元测试（含 docx 转换、文档库存储与测试夹具）
@@ -439,6 +470,8 @@ docs/             HTML 项目主页与截图
 - 仅针对 DeepSeek Chat Completions 兼容接口实现（模型名可配）；
 - 协同编辑 / 云同步未实现（本地优先是有意选择）；
 - 自动保存按 1.2 秒防抖产生版本，频繁编辑/长文会生成较多版本文件（目前不自动清理；可备份/手动归档 `revisions/`）；
+- 全文审查按行聚合 hunk；模型大幅重排段落时，一处的行级差异可能覆盖多行，审批粒度会变粗（仍保留逐处批准/拒绝）；
+- 全文修改需要模型整篇重写；超长文档耗时会明显增加，适合单篇审阅而非批量处理；
 - 文档库是单机文件存储，不支持多进程同时写同一文档（服务端已按文档串行化写操作）；
 - Word 导入为语义转换，不保证版式级还原（详见上文限制）。
 

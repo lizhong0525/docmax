@@ -31,6 +31,8 @@ export interface CommandBarProps {
   hasApiKey: boolean;
   serviceState: HealthState;
   defaults: { model: ModelId; thinking: ThinkingLevel; modeChoice: ModeChoice; presetId: PromptPresetId };
+  /** 全文修改：整篇重写，提交后进入逐处审批 */
+  fullDocument: boolean;
   limits: {
     maxSelectionChars: number;
     maxInstructionChars: number;
@@ -80,10 +82,11 @@ export function CommandBar(props: CommandBarProps) {
   const resolvedMode = useMemo(() => {
     if (ask) return 'ask';
     if (isEmpty) return 'insert';
+    if (props.fullDocument) return 'rewrite';
     if (modeChoice === 'rewrite') return 'rewrite';
     if (modeChoice === 'surgical') return 'surgical';
     return (primary?.analysis.chars ?? 0) > props.limits.defaultMaxRewriteChars ? 'surgical' : 'rewrite';
-  }, [ask, isEmpty, modeChoice, primary, props.limits.defaultMaxRewriteChars]);
+  }, [ask, isEmpty, modeChoice, primary, props.limits.defaultMaxRewriteChars, props.fullDocument]);
 
   const selectionLimitExceeded = totalChars > props.limits.maxSelectionChars;
   const instructionLimitExceeded = instruction.length > props.limits.maxInstructionChars;
@@ -126,7 +129,7 @@ export function CommandBar(props: CommandBarProps) {
       return;
     }
     setError(null);
-    props.onSubmit({ instruction: text, model, thinking, modeChoice, ask, presetId });
+    props.onSubmit({ instruction: text, model, thinking, modeChoice, ask, presetId, fullDocument: props.fullDocument });
   };
 
   if (!open) return null;
@@ -152,13 +155,21 @@ export function CommandBar(props: CommandBarProps) {
       >
         <div className="command-context">
           <span className="command-context-title">
-            {isEmpty ? '在光标处插入' : rangeCount > 1 ? `修改 ${rangeCount} 处选区` : '修改选区'}
+            {props.fullDocument
+              ? '全文修改'
+              : isEmpty
+                ? '在光标处插入'
+                : rangeCount > 1
+                  ? `修改 ${rangeCount} 处选区`
+                  : '修改选区'}
           </span>
           <span className="command-context-meta">
-            {isEmpty
-              ? '没有选中文字，将让模型插入新内容'
-              : `${formatCount(totalChars)} 字${primary ? ` · ${BLOCK_LABELS[primary.analysis.blockKind]}` : ''}`}
-            {rangeCount > 1 ? ` · 共 ${rangeCount} 处，按主选区优先逐个处理` : ''}
+            {props.fullDocument
+              ? `整篇文档 · ${formatCount(totalChars)} 字 · 提交后进入「审查修改」逐处审批`
+              : isEmpty
+                ? '没有选中文字，将让模型插入新内容'
+                : `${formatCount(totalChars)} 字${primary ? ` · ${BLOCK_LABELS[primary.analysis.blockKind]}` : ''}`}
+            {!props.fullDocument && rangeCount > 1 ? ` · 共 ${rangeCount} 处，按主选区优先逐个处理` : ''}
           </span>
           <button type="button" className="icon-btn command-close" onClick={props.onClose} aria-label="关闭指令条">
             ✕
@@ -180,13 +191,25 @@ export function CommandBar(props: CommandBarProps) {
           ))}
         </div>
 
+        {props.fullDocument ? (
+          <div className="command-full-note" data-testid="full-doc-note">
+            <strong>全文修改</strong>：模型会生成整篇新文本。提交后进入「审查修改」，逐处批准或拒绝，只有批准的修改会应用；未批准的保持原文。
+          </div>
+        ) : null}
+
         <textarea
           ref={textareaRef}
           className="command-input"
           data-testid="command-input"
           rows={2}
           value={instruction}
-          placeholder={isEmpty ? '描述你想插入的内容，例如：写一段关于「克制」的开头' : '告诉 DeepSeek 你想怎么改，例如：润色这段话，保持原意'}
+          placeholder={
+            props.fullDocument
+              ? '描述你想如何修改整篇文档，例如：统一改成正式的技术文档风格，保留全部信息'
+              : isEmpty
+                ? '描述你想插入的内容，例如：写一段关于「克制」的开头'
+                : '告诉 DeepSeek 你想怎么改，例如：润色这段话，保持原意'
+          }
           onChange={(event) => {
             setInstruction(event.target.value);
             setError(null);
@@ -299,6 +322,8 @@ export function CommandBar(props: CommandBarProps) {
               value={modeChoice}
               onChange={(event) => setModeChoice(event.target.value as ModeChoice)}
               data-testid="select-mode"
+              disabled={props.fullDocument}
+              title={props.fullDocument ? '全文修改固定为整体重写，用于生成逐处审批的全文审查稿' : undefined}
             >
               <option value="auto">自动 · 按选区长度</option>
               <option value="rewrite">整体重写</option>
@@ -306,7 +331,7 @@ export function CommandBar(props: CommandBarProps) {
             </select>
           </label>
           <div className="resolved-mode" data-testid="resolved-mode">
-            <span className="resolved-label">{MODE_CHOICE_LABELS[modeChoice]}</span>
+            <span className="resolved-label">{props.fullDocument ? '全文' : MODE_CHOICE_LABELS[modeChoice]}</span>
             <span>{describeMode(resolvedMode)}</span>
           </div>
         </div>
@@ -355,7 +380,7 @@ export function CommandBar(props: CommandBarProps) {
               data-testid="command-submit"
               aria-label={ask ? '提交解释请求' : '提交修改请求'}
             >
-              {busy ? '生成中…' : ask ? '让 DeepSeek 解释' : '让 DeepSeek 修改'}
+              {busy ? '生成中…' : ask ? '让 DeepSeek 解释' : props.fullDocument ? '生成全文审查稿' : '让 DeepSeek 修改'}
               <kbd>{props.isMac ? '↵' : 'Enter'}</kbd>
             </button>
           </div>

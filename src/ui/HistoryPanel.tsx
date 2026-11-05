@@ -34,6 +34,8 @@ const EVENT_META: Record<AuditEventType, { icon: string; label: string; tone: st
   'docx-imported': { icon: '⤓', label: '导入 Word', tone: 'import' },
   'markdown-imported': { icon: '⤓', label: '导入 Markdown', tone: 'import' },
   'version-restored': { icon: '↺', label: '回滚版本', tone: 'restore' },
+  'review-approved': { icon: '✔', label: '全文审查通过', tone: 'ai-accept' },
+  'review-rejected': { icon: '⛔', label: '全文审查拒绝', tone: 'ai-reject' },
 };
 
 function formatDateTime(iso: string): string {
@@ -46,6 +48,11 @@ function formatDateTime(iso: string): string {
 function stringField(detail: Record<string, unknown> | undefined, key: string): string {
   const value = detail?.[key];
   return typeof value === 'string' ? value : '';
+}
+
+function numberField(detail: Record<string, unknown> | undefined, key: string): number | null {
+  const value = detail?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function short(text: string, max = 80): string {
@@ -103,7 +110,9 @@ export function HistoryPanel(props: HistoryPanelProps) {
 
   const events = useMemo(() => {
     const list = [...(history?.events ?? [])].reverse();
-    if (filter === 'ai') return list.filter((event) => event.type.startsWith('ai-'));
+    if (filter === 'ai') {
+      return list.filter((event) => event.type.startsWith('ai-') || event.type.startsWith('review-'));
+    }
     if (filter === 'versions') return list.filter((event) => typeof event.rev === 'number');
     return list;
   }, [history, filter]);
@@ -169,6 +178,10 @@ export function HistoryPanel(props: HistoryPanelProps) {
     const before = stringField(detail, 'before');
     const after = stringField(detail, 'after');
     const source = stringField(detail, 'source');
+    const reviewApproved = numberField(detail, 'approved');
+    const reviewRejected = numberField(detail, 'rejected');
+    const reviewPending = numberField(detail, 'pending');
+    const reviewTotal = numberField(detail, 'total');
     return (
       <div className="audit-detail">
         <div className="audit-detail-meta">
@@ -177,6 +190,11 @@ export function HistoryPanel(props: HistoryPanelProps) {
           {preset ? <span>提示词：{preset}</span> : null}
           {mode ? <span>模式：{mode}</span> : null}
           {source ? <span>来源：{source}</span> : null}
+          {reviewTotal !== null ? (
+            <span>
+              审批：批准 {reviewApproved ?? 0} / 拒绝 {reviewRejected ?? 0} / 未决 {reviewPending ?? 0}（共 {reviewTotal} 处）
+            </span>
+          ) : null}
           {typeof event.rev === 'number' ? <span>版本：v{event.rev}</span> : null}
         </div>
         {before || after ? (

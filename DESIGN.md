@@ -353,7 +353,7 @@ installer/staging/
 
 - staging 内 `node.exe server.mjs --prod` 冒烟：健康检查、首页 200、`/api/word/edit` 真实 DeepSeek 调用通过；
 - 静默测试安装到临时目录：文件/`.env`/卸载器齐全 → 安装版应用启动并完成真实 AI 请求 → `uninstall.exe /S` 完全删除目录；
-- 正式安装到 `%LOCALAPPDATA%\DocMax`：快捷方式、注册表卸载项、Word 加载项均就位；通过安装版启动器启动，健康检查显示 `version=0.4.0`、`mode=production`，页面 200；
+- 正式安装到 `%LOCALAPPDATA%\DocMax`：快捷方式、注册表卸载项、Word 加载项均就位；通过安装版启动器启动，健康检查显示 `version=0.5.0`、`mode=production`，页面 200；
 - 安装版 Word 加载项自检（API + 隐藏文档选区替换）通过。
 
 ### 9.5 限制
@@ -397,9 +397,9 @@ Word 加载项新增「结构重写」Ribbon 按钮，VBA 请求体带 `presetId
 
 ### 10.3 验证
 
-- 269 个单元测试（提示词目录、prompt 注入、空指令回退、请求体无输出上限、文档库/版本/留痕）；
+- 275 个单元测试（提示词目录、prompt 注入、空指令回退、请求体无输出上限、文档库/版本/留痕、全文审查 hunk/审批应用）；
 - `/api/word/edit` API 自检新增预设模式用例；
-- 13 个 Playwright E2E（新增「结构重写：指令留空也能提交并应用」「新建文档 → 自动保存 → 审阅留痕 → 版本 diff → 回滚 → 切换文档」）；
+- 14 个 Playwright E2E（新增「结构重写：指令留空也能提交并应用」「新建文档 → 自动保存 → 审阅留痕 → 版本 diff → 回滚 → 切换文档」「全文修改 → 逐处批准/拒绝 → 部分应用」）；
 - 长输出与结构重写各跑一次真实 DeepSeek 请求，数据见上。
 
 ## 11. 文档库、版本与全程留痕
@@ -447,14 +447,63 @@ Word 加载项新增「结构重写」Ribbon 按钮，VBA 请求体带 `presetId
 
 - 8 个文档库单测：子文件夹布局、版本/相同内容去重、重命名只留痕、回滚、AI 事件追加、删除入 trash、路径穿越拒绝、列表排序；
 - `/api/docs` 自检覆盖新建→保存→重复保存→重命名→审计→历史→版本→回滚→删除全链路；
-- 13 个 E2E 中的「文档库与审阅留痕」真实浏览器覆盖新建、自动保存、AI 提案/接受留痕、版本 diff、回滚、切换文档；
+- 14 个 E2E 中的「文档库与审阅留痕」真实浏览器覆盖新建、自动保存、AI 提案/接受留痕、版本 diff、回滚、切换文档；
 - 截图：`docs/screenshots/11-doc-library.png`、`12-history-timeline.png`、`13-history-diff.png`。
 
 ### 11.6 限制
 
 单进程/单机存储（本机服务串行化写同一文档）；不自动清理历史版本/trash；没有加密与访问控制（依赖本地单用户环境）；版本以全文快照存储，超长文档会产生较大磁盘占用。
 
-## 12. 已知限制与后续方向
+## 12. 全文修改与逐处审批
+
+### 12.1 为什么需要独立流程
+
+普通选区编辑的审阅对象是「一份提案」：看 diff → 接受整份或拒绝整份。全文修改的产物是一篇全新文档，整份接受风险太大，用户真正需要的是**逐处判断哪些改动可以接受**，并且一眼看清审批状态。v0.5.0 因此增加独立的「全文修改 → 审查修改 → 逐处审批 → 只应用批准部分」流程。
+
+### 12.2 请求侧：整篇文档作为范围
+
+- 标题下方「✦ 全文修改 · 审查审批」按钮；或手动全选后 `Ctrl/⌘ K` 也会自动识别为全文修改。
+- 发送时使用整篇文档的 `RangeSnapshot`（from=0,to=doc.length），`RunParams.fullDocument=true` 进入会话状态；模式固定为 `rewrite`（不走 surgical），确保得到一份完整的新文本。
+- 服务端仍是原来的 `/api/edit`：整篇作为选区，系统提示词和校验/修复逻辑完全复用。
+
+### 12.3 审查模型（`src/core/review.ts`）
+
+- 用 `diffLines` 把 before → after 的改动聚合成 `ReviewHunk`：`id / kind(add|delete|change) / oldStartLine / newStartLine / oldText / newText`。
+- 每个 hunk 独立审批：`pending | approved | rejected`。
+- `applyReviewDecisions(model, decisions)` 重建最终文本：已批准的 hunk 用新文本，pending/rejected 用原文；全批准严格等于 after，全拒绝严格等于 before。
+- 纯函数、无 DOM 依赖，6 个单测覆盖改写/新增/删除/多 hunk 部分批准/统计/大量行。
+
+### 12.4 审批可视化 UI
+
+`FullDocReview` 全屏面板：
+
+- 顶部计数（已批准 / 已拒绝 / 待审批）+ 双色进度条 + 全部批准/拒绝/重置；
+- 每个 hunk 一张卡：状态徽章、原第 N 行/新第 N 行、左右两栏原文/建议、字符差异；
+- 逐处「✓ 批准 / ✕ 拒绝」，状态即时改变颜色与进度条；
+- 底部实时给出最终审批结果；有未审批项时点击应用会先提示「未审批按保留原文处理」，再次确认才应用；
+- 应用使用单个 CodeMirror transaction 替换全文，`Ctrl+Z` 一次撤销。
+
+关闭「审查修改」会回到普通审阅面板，审批状态在同一份提案内保留；重新打开不会丢失。
+
+### 12.5 留痕与安全
+
+- 应用时保存文档（source=`ai-accept`），上传审批摘要（total / approved / rejected / pending / 每处 hunk 的决定）；
+- 额外写 `review-approved` 审计事件；拒绝全文写 `review-rejected`；HistoryPanel 显示审批数量并可查看版本 diff；
+- 应用前校验当前编辑器文档仍等于提案 oldText，文档在审批期间变化则拒绝应用；
+- 未审批项绝不写入；全部拒绝时走 `ai-rejected` 留痕，文档不变。
+
+### 12.6 验证
+
+- 审查模型 6 个单测；
+- `/api/docs` 自检接受 `review-approved` 事件并在历史中校验；
+- E2E「全文修改 → 逐处批准/拒绝 → 只应用批准部分并留痕」：自动打开审批面板、全部批准、拒绝其中一处、部分应用、历史出现全文审查通过事件；
+- 截图：`docs/screenshots/14-full-review-pending.png`、`15-full-review-decisions.png`、`16-full-review-history.png`。
+
+### 12.7 限制
+
+行级 hunk 对模型大幅重排段落会变粗；审批状态不跨提案保存（同一提案内保留）；超长文档整篇重写耗时较长。
+
+## 13. 已知限制与后续方向
 
 - 多选区目前串行逐区处理（v1：主选区优先），并行 + 合并为一个事务是可做的下一步；
 - surgical 模式对「同一短句在选区内重复」仍可能触发一次修复重试（已有 FIND_ALL 支持，长重复文本一次通过率待评测数据）；

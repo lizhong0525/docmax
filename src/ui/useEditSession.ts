@@ -31,6 +31,7 @@ export const INITIAL_SESSION: EditSessionState = {
   modeChoice: 'auto',
   ask: false,
   presetId: 'default',
+  fullDocument: false,
   batch: { current: 0, total: 0 },
   reasoning: '',
   analysis: null,
@@ -93,6 +94,8 @@ function newRequestId(): string {
 export function resolveRequestMode(params: RunParams, selectionChars: number): EditMode {
   if (params.ask) return 'ask';
   if (selectionChars === 0) return 'insert';
+  // 全文修改必须整体重写：才能得到一份可逐处审批的全文提案
+  if (params.fullDocument) return 'rewrite';
   if (params.modeChoice === 'surgical') return 'surgical';
   if (params.modeChoice === 'rewrite') return 'rewrite';
   return selectionChars > DEFAULT_MAX_REWRITE_CHARS ? 'surgical' : 'rewrite';
@@ -249,6 +252,7 @@ export function useEditSession(): EditSessionApi {
         modeChoice: params.modeChoice,
         ask: params.ask,
         presetId: params.presetId,
+        fullDocument: Boolean(params.fullDocument),
         batch: { current: 1, total: ranges.length },
         startedAt,
         elapsedMs: 0,

@@ -349,6 +349,66 @@ test.describe('文档库与审阅留痕', () => {
   });
 });
 
+test.describe('全文修改 · 审查审批可视化', () => {
+  test('全文修改 → 逐处批准/拒绝 → 只应用批准部分并留痕', async ({ page }) => {
+    const doc = [
+      '# 项目周报',
+      '',
+      '本周完成了登录模块和支付模块的开发，修复了三个阻塞问题。',
+      '',
+      '下周计划开始性能优化和移动端适配。',
+      '',
+      '风险：第三方接口稳定性差，需要增加重试和监控。',
+      '',
+    ].join('\n');
+    await page.goto('/');
+    await setDocument(page, doc);
+    await expect(page.locator('[data-testid="full-doc-edit"]')).toBeVisible();
+    await page.locator('[data-testid="full-doc-edit"]').click();
+    await expect(page.locator('[data-testid="command-bar"]')).toBeVisible();
+    await expect(page.locator('[data-testid="full-doc-note"]')).toBeVisible();
+    await expect(page.locator('[data-testid="command-bar"]')).toContainText('全文修改');
+    await page.locator('[data-testid="command-input"]').fill('把全文改写得更正式、结构更清楚，保留全部信息。');
+    await page.locator('[data-testid="command-submit"]').click();
+
+    // 全文审查面板自动打开
+    await expect(page.locator('[data-testid="full-review"]')).toBeVisible({ timeout: 90_000 });
+    const hunks = page.locator('.review-hunk');
+    await expect(hunks.first()).toBeVisible({ timeout: 20_000 });
+    const total = await hunks.count();
+    expect(total).toBeGreaterThan(0);
+    await expect(page.locator('[data-testid="review-apply"]')).toBeDisabled();
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-full-review-pending.png` });
+
+    // 全部批准：每处应显示已批准状态，进度更新
+    await page.locator('[data-testid="review-approve-all"]').click();
+    await expect(page.locator('.review-hunk-approved')).toHaveCount(total);
+    await expect(page.locator('[data-testid="review-apply"]')).toBeEnabled();
+
+    // 拒绝其中一处，验证“部分批准”的审批可视化与最终应用
+    const rejectIndex = total >= 2 ? 2 : 1;
+    await page.locator(`[data-testid="review-reject-${rejectIndex}"]`).click();
+    await expect(page.locator('.review-hunk-rejected')).toHaveCount(1);
+    await expect(page.locator('.review-hunk-approved')).toHaveCount(total - 1);
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-full-review-decisions.png` });
+
+    await page.locator('[data-testid="review-apply"]').click();
+    await expect(page.locator('[data-testid="full-review"]')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator('[data-testid="toast"]')).toContainText('已应用', { timeout: 10_000 });
+
+    // 内容被部分应用；留痕中有全文审查通过事件
+    await expect(page.locator('[data-testid="doc-sync"]')).toContainText('已同步', { timeout: 30_000 });
+    const after = await readEditor(page);
+    expect(after).not.toBe(doc);
+    expect(after.length).toBeGreaterThan(0);
+    await page.locator('[data-testid="open-history"]').click();
+    await expect(page.locator('[data-testid="history-panel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="audit-review-approved"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="audit-review-approved"]').first()).toContainText('全文审查通过');
+    await page.screenshot({ path: `${SHOT_DIR}/e2e-full-review-history.png` });
+  });
+});
+
 test.describe('响应式布局', () => {
   test('窄屏下指令条可用且截图留档', async ({ page }) => {
     await page.setViewportSize({ width: 520, height: 900 });

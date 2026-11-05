@@ -37,6 +37,9 @@ export interface ReviewPanelProps {
   requiresConfirm: boolean;
   noChange: boolean;
   isAsk: boolean;
+  /** 全文修改：强制进入逐处审批，而不是一键接受 */
+  fullDocument: boolean;
+  onOpenFullReview: () => void;
   onClose: () => void;
   onAbort: () => void;
   onReject: () => void;
@@ -368,10 +371,23 @@ export function ReviewPanel(props: ReviewPanelProps) {
           <span>{modelLabel(state.model)}</span>
           {mode ? <span>{MODE_LABELS[mode]}</span> : null}
           {!isAsk ? <span>提示词 · {promptPresetLabel(state.presetId)}</span> : null}
+          {props.fullDocument ? <span className="review-meta-full">全文审查</span> : null}
           {state.usage ? <span>{formatCount(state.usage.totalTokens)} tokens</span> : null}
           {state.timings?.firstContentMs ? <span>首字 {formatDuration(state.timings.firstContentMs)}</span> : null}
           {state.timings?.repairs ? <span>修复 {state.timings.repairs} 次</span> : null}
         </div>
+
+        {props.fullDocument && state.status === 'review' && !isAsk ? (
+          <div className="review-full-banner" data-testid="review-full-banner">
+            <div>
+              <strong>全文修改审查稿</strong>
+              <p>这是整篇文档的修改建议。请逐处批准或拒绝；只有批准的修改会写入文档。</p>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={props.onOpenFullReview} data-testid="open-full-review">
+              打开审查修改
+            </button>
+          </div>
+        ) : null}
 
         {stale ? (
           <div className="stale-banner" role="alert" data-testid="stale-banner">
@@ -464,7 +480,7 @@ export function ReviewPanel(props: ReviewPanelProps) {
           </>
         ) : (
           <>
-            <span className="foot-note">Ctrl+Enter 接受 · Esc 关闭</span>
+            <span className="foot-note">{props.fullDocument ? '全文修改需逐处审批' : 'Ctrl+Enter 接受 · Esc 关闭'}</span>
             <button type="button" className="btn btn-ghost" onClick={props.onReject} data-testid="reject">
               拒绝
             </button>
@@ -472,6 +488,15 @@ export function ReviewPanel(props: ReviewPanelProps) {
               {stale ? (
                 <button type="button" className="btn btn-primary" onClick={props.onRegenerate} data-testid="regenerate">
                   重新生成
+                </button>
+              ) : props.fullDocument ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={props.onOpenFullReview}
+                  data-testid="accept"
+                >
+                  审查修改（逐处审批）
                 </button>
               ) : (
                 <button

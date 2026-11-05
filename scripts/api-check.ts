@@ -324,6 +324,17 @@ async function main(): Promise<void> {
   });
   check('POST 追加 AI 提案留痕', auditRes.status === 201, auditRes.status);
 
+  const reviewAuditRes = await fetch(`${BASE}/api/docs/${apiDocId}/audit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'review-approved',
+      summary: '全文审查通过：批准 2 / 拒绝 1',
+      detail: { total: 3, approved: 2, rejected: 1, pending: 0 },
+    }),
+  });
+  check('POST 追加全文审查审批留痕', reviewAuditRes.status === 201, reviewAuditRes.status);
+
   const historyRes = await fetch(`${BASE}/api/docs/${apiDocId}/history`);
   const historyBody = (await historyRes.json()) as {
     events?: Array<{ type: string }>;
@@ -331,12 +342,13 @@ async function main(): Promise<void> {
   };
   const eventTypes = (historyBody.events ?? []).map((event) => event.type);
   check(
-    'GET history 包含 create/save/rename/ai-proposal 与 2 个版本',
+    'GET history 包含 create/save/rename/ai-proposal/review-approved 与 2 个版本',
     historyRes.ok &&
       eventTypes.includes('doc-created') &&
       eventTypes.includes('doc-saved') &&
       eventTypes.includes('doc-renamed') &&
       eventTypes.includes('ai-proposal') &&
+      eventTypes.includes('review-approved') &&
       (historyBody.revisions ?? []).length === 2,
     eventTypes,
   );

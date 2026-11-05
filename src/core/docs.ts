@@ -64,7 +64,9 @@ export type AuditEventType =
   | 'ai-rejected'
   | 'docx-imported'
   | 'markdown-imported'
-  | 'version-restored';
+  | 'version-restored'
+  | 'review-approved'
+  | 'review-rejected';
 
 /** 留痕事件（追加式，不修改历史） */
 export interface AuditEvent {

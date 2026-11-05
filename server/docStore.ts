@@ -417,6 +417,8 @@ export function appendAudit(id: string, input: AuditEventInput): AuditEvent {
     'docx-imported',
     'markdown-imported',
     'version-restored',
+    'review-approved',
+    'review-rejected',
   ];
   if (!allowed.includes(input.type)) throw new DocStoreError('bad-event-type', '未知的留痕事件类型。', 400);
   const event = makeEvent(input.type, input.summary, input.detail, input.rev);

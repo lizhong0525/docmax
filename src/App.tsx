@@ -16,6 +16,7 @@ import { applyProposals } from './core/apply';
 import { analyzeSelection, buildRangeSnapshot } from './core/selection';
 import { DEFAULT_LIMITS } from './core/protocol';
 import { getPromptPreset, type PromptPresetId } from './core/presets';
+import type { ReviewSummary } from './core/review';
 import type { DocDetail, DocSummary, RevisionSource } from './core/docs';
 import type { EditProposal, ModelId, ThinkingLevel } from './core/types';
 import { CodeMirrorEditor, type CodeMirrorEditorHandle } from './ui/CodeMirrorEditor';
@@ -28,6 +29,7 @@ import { useEditSession, type SessionContext } from './ui/useEditSession';
 import { docApi } from './ui/docApi';
 import { DocumentLibrary } from './ui/DocumentLibrary';
 import { HistoryPanel } from './ui/HistoryPanel';
+import { FullDocReview } from './ui/FullDocReview';
 import { IconBraces, IconClose, IconEdit, IconFolder, IconHelp, IconMoon, IconPreview, IconSave, IconSparkle, IconSun, IconWord } from './ui/Icons';
 import { DocxImportDialog, type DocxImportState } from './ui/DocxImportDialog';
 import { importDocx, pickDocxFile } from './ui/docxImport';
@@ -108,6 +110,9 @@ export function App() {
   const [docsError, setDocsError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'local' | 'saving' | 'synced' | 'error'>('local');
   const [revisionCount, setRevisionCount] = useState(0);
+  /* 全文修改 · 审查审批 */
+  const [fullDocIntent, setFullDocIntent] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   const [prefs, setPrefs] = useState<{
     model: ModelId;
@@ -141,6 +146,7 @@ export function App() {
   );
   const bootstrappedRef = useRef(false);
   const proposalLoggedRef = useRef<string | null>(null);
+  const reviewAutoShownRef = useRef<string | null>(null);
   const session = useEditSession();
   const sessionState = session.state;
 
@@ -466,6 +472,30 @@ export function App() {
     setHistoryRefreshKey((key) => key + 1);
   }, [sessionState.proposals, sessionState.instruction, sessionState.model, sessionState.presetId]);
 
+  /* 全文修改：生成完成后自动打开「审查修改」逐处审批面板 */
+  useEffect(() => {
+    if (!sessionState.fullDocument || sessionState.ask) return;
+    if (sessionState.status !== 'review' || sessionState.proposals.length === 0) return;
+    const key = sessionState.proposals[0].requestId;
+    if (reviewAutoShownRef.current === key) return;
+    reviewAutoShownRef.current = key;
+    setReviewModalOpen(true);
+  }, [sessionState.fullDocument, sessionState.ask, sessionState.status, sessionState.proposals]);
+
+  useEffect(() => {
+    if (sessionState.status === 'idle') setReviewModalOpen(false);
+  }, [sessionState.status]);
+
+  /** 由全文提案重建「原文 → 建议全文」，供逐处审批 */
+  const fullReviewData = useMemo(() => {
+    if (!sessionState.fullDocument || sessionState.status !== 'review' || sessionState.proposals.length === 0) return null;
+    const before = sessionState.proposals[0]?.ops[0]?.oldText;
+    if (typeof before !== 'string' || !before) return null;
+    const applied = applyProposals(before, sessionState.proposals);
+    if (!applied.ok || applied.docText === before) return null;
+    return { before, after: applied.docText };
+  }, [sessionState.fullDocument, sessionState.status, sessionState.proposals]);
+
 
   /* -------------------------------- 编辑器 -------------------------------- */
 
@@ -492,11 +522,14 @@ export function App() {
     const doc = editor.getDoc();
     const ranges = editor.getRanges();
     if (!ranges.length) return;
+    // 手动全选 + Ctrl+K 也视为全文修改：同样进入逐处审批流程
+    const fullDocSelected = ranges.length === 1 && ranges[0].from === 0 && ranges[0].to === doc.length && doc.length > 0;
     const draftRanges: DraftRange[] = ranges.map((range, index) => {
       const snapshot = buildRangeSnapshot(doc, range, index, DEFAULT_LIMITS.defaultContextChars);
       const analysis = analyzeSelection(doc, range.from, range.to, index);
       return { ...range, index, analysis, snapshot };
     });
+    setFullDocIntent(fullDocSelected);
     setDraft({
       ranges: draftRanges,
       docChars: doc.length,
@@ -507,8 +540,41 @@ export function App() {
     setCommandOpen(true);
   }, [sessionState.status, showToast]);
 
+  /** 全文修改：不依赖手工全选，直接把整篇文档作为范围，提交后进入逐处审批 */
+  const openFullDocumentCommand = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (editor.isComposing()) return;
+    if (sessionState.status === 'running') {
+      showToast('正在生成，请稍候或按 Esc 中止');
+      return;
+    }
+    const doc = editor.getDoc();
+    if (!doc.trim()) {
+      showToast('文档为空，先写一些内容再全文修改');
+      return;
+    }
+    if (doc.length > DEFAULT_LIMITS.maxSelectionChars) {
+      showToast(`文档共 ${doc.length.toLocaleString('zh-CN')} 字，超过单次上限 ${DEFAULT_LIMITS.maxSelectionChars.toLocaleString('zh-CN')} 字`);
+      return;
+    }
+    const range = { from: 0, to: doc.length, anchor: 0, head: doc.length };
+    const snapshot = buildRangeSnapshot(doc, range, 0, DEFAULT_LIMITS.defaultContextChars);
+    const analysis = analyzeSelection(doc, 0, doc.length, 0);
+    setFullDocIntent(true);
+    setDraft({
+      ranges: [{ ...range, index: 0, analysis, snapshot }],
+      docChars: doc.length,
+      docLines: doc ? doc.split('\n').length : 0,
+      docTitle: titleRef.current,
+    });
+    setDetailOpen(false);
+    setCommandOpen(true);
+  }, [sessionState.status, showToast]);
+
   const closeCommandBar = useCallback(() => {
     setCommandOpen(false);
+    setFullDocIntent(false);
     window.requestAnimationFrame(() => editorRef.current?.focus());
   }, []);
 
@@ -532,16 +598,25 @@ export function App() {
       showToast('输入法正在输入，完成后再试');
       return;
     }
-    const context = buildContext();
+    const context: SessionContext | null = params.fullDocument
+      ? {
+          docText: docRef.current,
+          docTitle: titleRef.current,
+          docRev: docRevRef.current,
+          ranges: [{ from: 0, to: docRef.current.length, anchor: 0, head: docRef.current.length }],
+        }
+      : buildContext();
     if (!context) return;
     lastParamsRef.current = params;
     setPrefs({ model: params.model, thinking: params.thinking, modeChoice: params.modeChoice, presetId: params.presetId });
     storePrefs({ model: params.model, thinking: params.thinking, presetId: params.presetId });
+    setReviewModalOpen(false);
     session.start(params, context);
   };
 
   const handleCommandSubmit = (params: RunParams) => {
     setCommandOpen(false);
+    setFullDocIntent(false);
     setConfirmAccept(false);
     setStaleOverride(null);
     startFromParams(params);
@@ -595,6 +670,12 @@ export function App() {
     const state = sessionState;
     const editor = editorRef.current;
     if (!editor || state.status === 'running') return;
+    // 全文修改必须走逐处审批，不允许一键全部接受
+    if (state.fullDocument) {
+      setReviewModalOpen(true);
+      showToast('全文修改请使用「审查修改」逐处审批');
+      return;
+    }
     if (editor.isComposing()) {
       showToast('输入法正在输入，完成后再接受');
       return;
@@ -658,6 +739,96 @@ export function App() {
     showToast(orderedOps.length > 1 ? `已应用 ${orderedOps.length} 处修改 · Ctrl+Z 可撤销` : '已应用修改 · Ctrl+Z 可撤销');
   };
 
+  const applyFullReview = (finalText: string, summary: ReviewSummary): void => {
+    const editor = editorRef.current;
+    if (!editor || !fullReviewData) return;
+    const current = editor.getDoc();
+    if (current !== fullReviewData.before) {
+      showToast('文档已变化，无法应用这份审查稿；请重新生成全文修改');
+      return;
+    }
+    const applied = editor.applyChanges([{ from: 0, to: current.length, insert: finalText }], 0);
+    if (!applied) {
+      showToast('应用全文修改失败，请重试');
+      return;
+    }
+    const appliedDoc = editor.getDoc();
+    docRef.current = appliedDoc;
+    const state = sessionState;
+    const currentId = activeDocIdRef.current;
+    const reviewDetail = {
+      instruction: state.instruction,
+      model: state.model,
+      presetId: state.presetId,
+      requestId: state.proposals[0]?.requestId,
+      fullDocument: true,
+      total: summary.total,
+      approved: summary.approved,
+      rejected: summary.rejected,
+      pending: summary.pending,
+      decisions: summary.decisions,
+      resultChars: summary.resultChars,
+    };
+    void persistDoc('ai-accept', {
+      note: `全文审查通过：批准 ${summary.approved} 处 / 拒绝 ${summary.rejected} 处`,
+      detail: reviewDetail,
+    });
+    if (currentId) {
+      void docApi
+        .audit(currentId, {
+          type: 'review-approved',
+          summary: `批准 ${summary.approved} / 拒绝 ${summary.rejected} / 未决 ${summary.pending}（共 ${summary.total} 处）`,
+          detail: reviewDetail,
+        })
+        .catch(() => undefined);
+    }
+    setHistoryRefreshKey((key) => key + 1);
+    session.reset();
+    setReviewModalOpen(false);
+    setFullDocIntent(false);
+    setConfirmAccept(false);
+    setStaleOverride(null);
+    editor.focus();
+    showToast(
+      summary.pending > 0
+        ? `已应用 ${summary.approved} 处修改，${summary.rejected + summary.pending} 处保留原文 · Ctrl+Z 可撤销`
+        : `已应用 ${summary.approved} 处修改，拒绝 ${summary.rejected} 处 · Ctrl+Z 可撤销`,
+    );
+  };
+
+  const rejectFullReview = (summary: ReviewSummary): void => {
+    const state = sessionState;
+    const currentId = activeDocIdRef.current;
+    const detail = {
+      instruction: state.instruction,
+      model: state.model,
+      presetId: state.presetId,
+      requestId: state.proposals[0]?.requestId,
+      fullDocument: true,
+      total: summary.total,
+      approved: summary.approved,
+      rejected: summary.rejected,
+      pending: summary.pending,
+      decisions: summary.decisions,
+    };
+    if (currentId) {
+      void docApi
+        .audit(currentId, {
+          type: 'review-rejected',
+          summary: `拒绝 ${summary.rejected} / 未决 ${summary.pending}（共 ${summary.total} 处）`,
+          detail,
+        })
+        .catch(() => undefined);
+    }
+    logAiRejected('全文修改审批未通过', '用户在审查修改中拒绝或未批准');
+    session.reset();
+    setReviewModalOpen(false);
+    setFullDocIntent(false);
+    setHistoryRefreshKey((key) => key + 1);
+    showToast('已拒绝全文修改，文档保持不变');
+    editorRef.current?.focus();
+  };
+
   const retryParams = (): RunParams | null => {
     if (sessionState.instruction) {
       return {
@@ -667,6 +838,7 @@ export function App() {
         modeChoice: sessionState.modeChoice,
         ask: sessionState.ask,
         presetId: sessionState.presetId,
+        fullDocument: sessionState.fullDocument,
       };
     }
     return lastParamsRef.current;
@@ -913,6 +1085,11 @@ export function App() {
     }
 
     if (event.key === 'Escape') {
+      if (reviewModalOpen) {
+        event.preventDefault();
+        setReviewModalOpen(false);
+        return;
+      }
       if (libraryOpen) {
         event.preventDefault();
         setLibraryOpen(false);
@@ -958,6 +1135,11 @@ export function App() {
 
     if (mod && event.key === 'Enter') {
       if (commandOpen) return;
+      if (sessionState.fullDocument && gate.ops.length > 0 && !gate.isAsk) {
+        event.preventDefault();
+        setReviewModalOpen(true);
+        return;
+      }
       if (gate.ops.length > 0 && !gate.isAsk) {
         event.preventDefault();
         accept();
@@ -1191,6 +1373,19 @@ export function App() {
                 </>
               ) : null}
             </div>
+            <div className="doc-head-actions">
+              <button
+                type="button"
+                className="status-btn full-doc-btn"
+                onClick={openFullDocumentCommand}
+                disabled={sessionState.status === 'running'}
+                title="把整篇文档交给 AI 修改，生成后逐处批准/拒绝，只有批准的修改会应用"
+                data-testid="full-doc-edit"
+              >
+                ✦ 全文修改 · 审查审批
+              </button>
+              <span className="doc-head-tip">整篇重写 → 逐处审批 → 只应用批准的部分</span>
+            </div>
           </div>
 
           <div className="paper" data-testid="paper">
@@ -1259,6 +1454,8 @@ export function App() {
             requiresConfirm={gate.hasErrorWarning && !confirmAccept}
             noChange={gate.noChange}
             isAsk={gate.isAsk}
+            fullDocument={sessionState.fullDocument}
+            onOpenFullReview={() => setReviewModalOpen(true)}
             onClose={closeSession}
             onAbort={abortSession}
             onReject={reject}
@@ -1295,11 +1492,22 @@ export function App() {
         defaults={prefs}
         limits={DEFAULT_LIMITS}
         isMac={isMac}
+        fullDocument={fullDocIntent}
         onClose={closeCommandBar}
         onSubmit={handleCommandSubmit}
       />
 
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} isMac={isMac} />
+
+      <FullDocReview
+        open={reviewModalOpen && Boolean(fullReviewData)}
+        before={fullReviewData?.before ?? null}
+        after={fullReviewData?.after ?? null}
+        state={sessionState}
+        onClose={() => setReviewModalOpen(false)}
+        onApply={applyFullReview}
+        onRejectAll={rejectFullReview}
+      />
 
       <DocumentLibrary
         open={libraryOpen}

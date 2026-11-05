@@ -69,6 +69,8 @@ export interface RunParams {
   ask: boolean;
   /** 系统内置提示词模式 */
   presetId: PromptPresetId;
+  /** 本次是否为「全文修改」（整篇替换 → 逐处审批） */
+  fullDocument?: boolean;
 }
 
 export type StreamPhase = 'connecting' | 'thinking' | 'streaming' | 'validating' | 'repairing' | 'done';
@@ -95,6 +97,8 @@ export interface EditSessionState {
   modeChoice: ModeChoice;
   ask: boolean;
   presetId: PromptPresetId;
+  /** 全文修改：进入逐处审批流程（审批可视化） */
+  fullDocument: boolean;
   /** 多选区串行处理的进度 */
   batch: { current: number; total: number };
   reasoning: string;
